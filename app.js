@@ -1214,31 +1214,6 @@ function finishGame(reason = "auto") {
   state.screen = "result";
   renderResult();
 }
-function getResultCopy() {
-  const category = CATEGORIES.face;
-  const isDirect = state.flow === "direct";
-  const isUntilNine = state.mode === "until9";
-  const hitAutoLimit = isUntilNine && state.autoFinishedByLimit;
-  const finishedByUser = isUntilNine && state.autoFinishedByUser;
-  const gap = getBorderGap();
-  const resultMessage = isDirect
-    ? "あなたの好き顔9人が決まりました。"
-    : isUntilNine ? (finishedByUser ? "ここまでの比較で、現在のElo上位9人を決定しました。" : hitAutoLimit ? "安全上限まで比較し、Elo上位9人に絞り込みました。" : "上位9人の境界が安定したところで、すぐに絞り込みました。")
-    : gap >= 50 ? "対戦で選ばれ続けた9人がそろいました。" : "9人目まで、最後まで厳選しました。";
-  const resultLead = isDirect
-    ? "選んだ順番に、あなたの好き顔9人をまとめました。"
-    : isUntilNine ? `${state.matchIndex}回の比較で、Eloスコアから選ばれた9人です。`
-    : `${state.maxMatches}回の直感から、選ばれた9人です。`;
-  const resultInsight = isDirect
-    ? "好きなメンバーを選んだ順に並べています。"
-    : isUntilNine ? (finishedByUser ? "あなたが終了した時点のランキングを表示しています。" : hitAutoLimit ? "安全上限まで比較し、Elo上位9人を表示しています。" : "同じ人や組み合わせが偏らないように比較し、9位と境界候補の不確実幅が分離した時点で終了しました。")
-    : "あなたの好き顔として残ったタレントたちです。";
-  const resultNote = isDirect
-    ? "✦ 9人を選んだ順番で表示しています。気になるタレントをタップすると公式プロフィールが開きます。"
-    : isUntilNine ? (finishedByUser ? `✦ ${state.matchIndex}問で手動終了しました。現在の上位9人を表示しています。` : hitAutoLimit ? `✦ ${MAX_AUTO_MATCHES}回を安全上限として設定しています。` : "✦ 上位9人の不確実幅、境界候補の比較回数、トップ9の連続一致を確認して終了しています。")
-    : "✦ 気になるタレントをタップすると公式プロフィールが開きます。";
-  return { category, isDirect, isUntilNine, resultMessage, resultLead, resultInsight, resultNote };
-}
 function renderResult() {
   const category = CATEGORIES.face;
   const isDirect = state.flow === "direct";
@@ -1264,11 +1239,10 @@ function renderResult() {
     <p class="result-insight"><strong>${resultMessage}</strong><br />${isDirect ? "好きなメンバーを選んだ順に並べています。" : isUntilNine ? (finishedByUser ? "あなたが終了した時点のランキングを表示しています。" : hitAutoLimit ? "安全上限まで比較し、Elo上位9人を表示しています。" : "同じ人や組み合わせが偏らないように比較し、9位と境界候補の不確実幅が分離した時点で終了しました。") : "あなたの好き顔として残ったタレントたちです。"}</p>
     <div class="final-nine-grid">${finalNine.map((member, index) => `<a class="final-card" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く">${isDirect ? `<span class="final-card-order">${index + 1}</span>` : ""}<span class="final-card-photo">${imageTag(member)}</span><span class="final-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
     <p class="result-note">${resultNote}</p>
-    <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="secondary-btn" id="save-btn">▣ 画像で保存</button><button class="primary-btn" id="retry-btn">${isDirect ? "もう一度選ぶ" : "もう一度診断する"}</button></div>
+    <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="primary-btn" id="retry-btn">${isDirect ? "もう一度選ぶ" : "もう一度診断する"}</button></div>
   </section>`;
   document.querySelector("#retry-btn").addEventListener("click", () => { state.screen = "setup"; if (isDirect) state.directSelection = []; render(); });
   document.querySelector("#share-btn").addEventListener("click", shareResult);
-  document.querySelector("#save-btn").addEventListener("click", saveResultImage);
 }
 function showToast(message) {
   toast.textContent = message; toast.classList.add("is-visible"); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2600);
@@ -1281,79 +1255,6 @@ async function shareResult() {
     if (navigator.share) await navigator.share({ title: "STARTO 好き顔セレクション", text, url: location.href });
     else { await navigator.clipboard.writeText(`${text}\n${location.href}`); showToast("結果とURLをコピーしました"); }
   } catch (error) { if (error.name !== "AbortError") showToast("シェアの準備ができませんでした"); }
-}
-function svgEscape(value) {
-  return String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[character]));
-}
-function svgLines(text, maxLength = 44) {
-  const lines = [];
-  let line = "";
-  for (const character of String(text)) {
-    line += character;
-    if (line.length >= maxLength && /[。.!！?？、]/.test(character)) {
-      lines.push(line);
-      line = "";
-    }
-  }
-  if (line) lines.push(line);
-  return lines.length ? lines : [""];
-}
-function saveResultImage() {
-  const finalNine = state.ranking.slice(0, 9);
-  const { category, resultMessage, resultLead, resultInsight, resultNote } = getResultCopy();
-  const width = 1200;
-  const height = 1720;
-  const cardWidth = 350;
-  const cardHeight = 335;
-  const photoHeight = 245;
-  const cardXs = [60, 425, 790];
-  const cardYs = [410, 770, 1130];
-  const insightLines = svgLines(resultInsight, 48);
-  const noteLines = svgLines(resultNote.replace(/^✦\\s*/, ""), 58);
-  const svg = [`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-    `<rect width="${width}" height="${height}" fill="#f4f7fb"/>`,
-    `<circle cx="1110" cy="160" r="150" fill="#dff7fa" opacity=".9"/>`,
-    `<circle cx="80" cy="1620" r="180" fill="#fff0eb" opacity=".85"/>`,
-    `<rect x="28" y="24" width="1144" height="1660" rx="34" fill="#ffffff"/>`,
-    `<text x="68" y="78" fill="#08182e" font-family="Arial, Noto Sans JP, sans-serif" font-size="27" font-weight="900" letter-spacing="6">STARTO</text>`,
-    `<text x="70" y="106" fill="#71839f" font-family="Arial, Noto Sans JP, sans-serif" font-size="14" font-weight="700" letter-spacing="2">好き顔セレクション</text>`,
-    `<text x="1132" y="82" text-anchor="end" fill="#71839f" font-family="Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="3">MY 9 FAVORITES</text>`,
-    `<rect x="492" y="132" width="216" height="38" rx="19" fill="#e8fafd"/>`,
-    `<text x="600" y="157" text-anchor="middle" fill="#08182e" font-family="Arial, Noto Sans JP, sans-serif" font-size="15" font-weight="900" letter-spacing="2">✦ YOUR 9 ARE READY</text>`,
-    `<text x="600" y="220" text-anchor="middle" fill="#08182e" font-family="Arial, Noto Sans JP, sans-serif" font-size="42" font-weight="900">あなたの${svgEscape(category.label)}</text>`,
-    `<text x="600" y="254" text-anchor="middle" fill="#71839f" font-family="Arial, Noto Sans JP, sans-serif" font-size="17" font-weight="500">${svgEscape(resultLead)}</text>`,
-    `<rect x="60" y="278" width="1080" height="98" rx="20" fill="#effbfc"/>`,
-    `<text x="600" y="314" text-anchor="middle" fill="#ff8068" font-family="Arial, Noto Sans JP, sans-serif" font-size="19" font-weight="900">${svgEscape(resultMessage)}</text>`,
-    ...insightLines.slice(0, 2).map((line, index) => `<text x="600" y="${345 + index * 24}" text-anchor="middle" fill="#183b61" font-family="Arial, Noto Sans JP, sans-serif" font-size="16" font-weight="700">${svgEscape(line)}</text>`)
-  ];
-  finalNine.forEach((member, index) => {
-    const x = cardXs[index % 3];
-    const y = cardYs[Math.floor(index / 3)];
-    const clipId = `photo-clip-${index}`;
-    svg.push(`<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="22"/></clipPath>`);
-    svg.push(`<rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="22" fill="#08182e"/>`);
-    svg.push(`<image href="${svgEscape(member.image)}" xlink:href="${svgEscape(member.image)}" x="${x}" y="${y}" width="${cardWidth}" height="${photoHeight}" preserveAspectRatio="xMidYMin slice" clip-path="url(#${clipId})"/>`);
-    if (state.flow === "direct") {
-      svg.push(`<circle cx="${x + 30}" cy="${y + 30}" r="20" fill="#ffcf74"/>`);
-      svg.push(`<text x="${x + 30}" y="${y + 37}" text-anchor="middle" fill="#08182e" font-family="Arial, sans-serif" font-size="17" font-weight="900">${index + 1}</text>`);
-    }
-    svg.push(`<text x="${x + 18}" y="${y + 275}" fill="#7bd9e9" font-family="Arial, Noto Sans JP, sans-serif" font-size="13" font-weight="800">${svgEscape(member.groupName)}</text>`);
-    svg.push(`<text x="${x + 18}" y="${y + 306}" fill="#ffffff" font-family="Arial, Noto Sans JP, sans-serif" font-size="23" font-weight="900">${svgEscape(member.name)}</text>`);
-    svg.push(`<text x="${x + 18}" y="${y + 326}" fill="#a8b5c8" font-family="Arial, sans-serif" font-size="10" font-weight="700" letter-spacing="1">OFFICIAL PROFILE ↗</text>`);
-  });
-  svg.push(`<text x="600" y="1510" text-anchor="middle" fill="#71839f" font-family="Arial, Noto Sans JP, sans-serif" font-size="15" font-weight="600">✦ ${svgEscape(noteLines[0] || "")}</text>`);
-  if (noteLines[1]) svg.push(`<text x="600" y="1535" text-anchor="middle" fill="#71839f" font-family="Arial, Noto Sans JP, sans-serif" font-size="15" font-weight="600">${svgEscape(noteLines[1])}</text>`);
-  svg.push(`<line x1="560" y1="1580" x2="640" y2="1580" stroke="#ff8068" stroke-width="5" stroke-linecap="round"/>`);
-  svg.push(`<text x="600" y="1620" text-anchor="middle" fill="#71839f" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="2">STARTO 好き顔セレクション</text>`);
-  svg.push("</svg>");
-  const blob = new Blob([svg.join("")], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.download = "starto-sukigao-result.svg";
-  link.href = url;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast("最終結果の画像を保存しました");
 }
 
 render();
