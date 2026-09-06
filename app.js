@@ -770,12 +770,14 @@ const state = {
   selectedGroups: new Set(GROUPS.map(group => group.id)),
   mode: "easy",
   photo: "official",
-  matches: [],
+  maxMatches: 100,
   matchIndex: 0,
-  scores: new Map(),
+  elo: new Map(),
+  seen: new Set(),
+  battled: new Map(),
+  currentPair: null,
   history: [],
-  ranking: [],
-  showAll: false
+  ranking: []
 };
 
 const app = document.querySelector("#app");
@@ -785,9 +787,8 @@ let toastTimer;
 function esc(text) {
   return String(text).replace(/[&<>'"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[ch]));
 }
-function groupOf(member) { return GROUPS.find(group => group.id === member.groupId); }
 function allSelectedMembers() {
-  return GROUPS.filter(group => state.selectedGroups.has(group.id)).flatMap(group => group.members.map(member => ({ ...member, groupId: group.id, groupName: group.name })));
+  return GROUPS.flatMap(group => group.members.map(member => ({ ...member, groupId: group.id, groupName: group.name })));
 }
 function initials(name) { return name.slice(0, 1); }
 function shuffle(items) {
@@ -801,26 +802,64 @@ function shuffle(items) {
 function imageTag(member, className = "") {
   return `<img class="${className}" src="${member.image}" alt="${esc(member.name)}" loading="lazy" onerror="this.style.display='none'" />`;
 }
-function getMatches(members) {
-  const pairs = [];
-  const used = new Set();
-  const addPair = (a, b) => {
-    const key = [a.name, b.name].sort().join("|");
-    if (a.name !== b.name && !used.has(key)) { used.add(key); pairs.push([a, b]); }
-  };
-  if (state.mode === "full") {
-    for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) addPair(members[i], members[j]);
-    return shuffle(pairs);
+function expected(a, b) { return 1 / (1 + Math.pow(10, (b - a) / 400)); }
+function getSorted(members = allSelectedMembers()) {
+  return [...members].sort((a, b) => (state.elo.get(b.name) || 0) - (state.elo.get(a.name) || 0));
+}
+function getPhase() {
+  const ratio = state.matchIndex / state.maxMatches;
+  return ratio < .5 ? 0 : ratio < .75 ? 1 : 2;
+}
+function getBorderGap() {
+  const sorted = getSorted();
+  return sorted.length >= 10 ? (state.elo.get(sorted[8].name) || 0) - (state.elo.get(sorted[9].name) || 0) : 0;
+}
+function pairKey(a, b) { return [a.name, b.name].sort().join("|"); }
+function pickEloPair() {
+  const members = allSelectedMembers();
+  const sorted = getSorted(members);
+  const phase = getPhase();
+  for (let attempt = 0; attempt < 300; attempt++) {
+    let a; let b;
+    if (phase === 0) {
+      const unseen = members.filter(member => !state.seen.has(member.name));
+      if (unseen.length >= 2) [a, b] = shuffle(unseen).slice(0, 2);
+      else if (unseen.length === 1) { a = unseen[0]; b = shuffle(members.filter(member => member.name !== a.name))[0]; }
+      else [a, b] = shuffle(members).slice(0, 2);
+    } else if (phase === 1) {
+      const pool = sorted.slice(0, Math.min(28, sorted.length));
+      const index = Math.floor(Math.random() * Math.max(1, pool.length - 1));
+      a = pool[index]; b = pool[index + 1] || pool[0];
+    } else {
+      const pool = sorted.slice(0, Math.min(16, sorted.length));
+      [a, b] = shuffle(pool).slice(0, 2);
+    }
+    if (!a || !b || a.name === b.name) continue;
+    const key = pairKey(a, b);
+    if (!state.battled.has(key) || phase === 2) {
+      state.battled.set(key, (state.battled.get(key) || 0) + 1);
+      return [a, b];
+    }
   }
-  const max = Math.min(30, Math.max(12, Math.round(members.length * 0.35)));
-  const possible = members.length * (members.length - 1) / 2;
-  const target = Math.min(max, possible);
-  let attempts = 0;
-  while (pairs.length < target && attempts < 500) {
-    const [a, b] = shuffle(members).slice(0, 2);
-    addPair(a, b); attempts++;
-  }
-  return pairs;
+  const [a, b] = shuffle(members).slice(0, 2);
+  return [a, b];
+}
+function updateElo(winner, loser) {
+  const winnerRating = state.elo.get(winner.name);
+  const loserRating = state.elo.get(loser.name);
+  const winnerExpected = expected(winnerRating, loserRating);
+  state.elo.set(winner.name, Math.round(winnerRating + 64 * (1 - winnerExpected)));
+  state.elo.set(loser.name, Math.round(loserRating + 32 * (0 - expected(loserRating, state.elo.get(winner.name)))));
+}
+function saveVoteHistory() {
+  state.history.push({
+    matchIndex: state.matchIndex,
+    elo: new Map(state.elo),
+    seen: new Set(state.seen),
+    battled: new Map(state.battled),
+    currentPair: state.currentPair
+  });
+  if (state.history.length > 10) state.history.shift();
 }
 function render() {
   if (state.screen === "setup") renderSetup();
@@ -847,8 +886,8 @@ function renderSetup() {
       <div class="selection-note"><span class="note-dot"></span><b>全${GROUPS.length}グループ・${TOTAL_MEMBERS}名が対象</b> / このまま診断をスタートできます</div>
       <div class="option-area">
         <div><div class="section-label"><b>対戦モード</b><span>QUESTION STYLE</span></div><div class="segmented">
-          <button class="segment-btn ${state.mode === "easy" ? "is-selected" : ""}" data-mode="easy"><b>サクッと診断</b><small>目安の対戦数で気軽に</small></button>
-          <button class="segment-btn ${state.mode === "full" ? "is-selected" : ""}" data-mode="full"><b>ガチ全部比較</b><small>全員を1対1で総当たり</small></button>
+          <button class="segment-btn ${state.mode === "easy" ? "is-selected" : ""}" data-mode="easy"><b>イージー（100回）</b><small>バランスよく厳選・約10分</small></button>
+          <button class="segment-btn ${state.mode === "full" ? "is-selected" : ""}" data-mode="full"><b>ガチモード（200回）</b><small>本気で厳選・約20分</small></button>
         </div></div>
         <div><div class="section-label"><b>写真タイプ</b><span>PHOTO TYPE</span></div><div class="segmented">
           <button class="segment-btn ${state.photo === "official" ? "is-selected" : ""}" data-photo="official"><b>公式アー写</b><small>プロフィール写真で選ぶ</small></button>
@@ -866,62 +905,88 @@ function bindSetup() {
 }
 function startGame() {
   const members = allSelectedMembers();
-  state.matches = getMatches(members);
-  state.matchIndex = 0; state.scores = new Map(members.map(member => [member.name, 0])); state.history = []; state.screen = "match";
+  state.maxMatches = state.mode === "easy" ? 100 : 200;
+  state.matchIndex = 0;
+  state.elo = new Map(members.map(member => [member.name, 1500]));
+  state.seen = new Set();
+  state.battled = new Map();
+  state.currentPair = pickEloPair();
+  state.history = [];
+  state.ranking = [];
+  state.screen = "match";
   render();
 }
 function renderMatch() {
-  const pair = state.matches[state.matchIndex];
-  const total = state.matches.length;
-  if (!pair) return finishGame();
+  const pair = state.currentPair || pickEloPair();
+  state.currentPair = pair;
+  const total = state.maxMatches;
+  const phase = getPhase();
+  const phaseLabels = ["候補を広く比較中", "好みを絞り込み中", "最終9人を厳選中"];
+  const phaseHint = phase === 2 ? "最終9人に近いタレントを重点的に比較しています" : "直感で選ぶほど、あなたの好き顔がはっきりします";
   app.innerHTML = `<section class="match-screen">
-    <div class="panel-head"><div><p class="panel-kicker">02 / TRUST YOUR INSTINCT</p><h2 class="panel-title">直感で、どっちが好き？</h2><p class="panel-lead">考えすぎず、最初に目に入った方をタップ。</p></div><span class="panel-index">02</span></div>
-    <div class="match-progress"><div class="match-progress-bar"><i style="width:${(state.matchIndex / total) * 100}%"></i></div><span class="match-progress-count">${String(state.matchIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span></div>
-    <p class="match-label">MATCH UP / ${state.mode === "easy" ? "EASY" : "FULL COMPARISON"}</p>
+    <div class="panel-head"><div><p class="panel-kicker">02 / TRUST YOUR INSTINCT</p><h2 class="panel-title">直感で、どっちが好き？</h2><p class="panel-lead">順位をつけるのではなく、選ばれたタレントを少しずつ厳選していきます。</p></div><span class="panel-index">02</span></div>
+    <div class="match-progress"><div class="match-progress-bar"><i style="width:${(state.matchIndex / total) * 100}%"></i></div><span class="match-progress-count">${String(state.matchIndex + 1).padStart(3, "0")} / ${String(total).padStart(3, "0")}</span></div>
+    <p class="match-label">${phaseLabels[phase]} / ${state.mode === "easy" ? "EASY 100" : "SERIOUS 200"}</p>
     <div class="match-pair">
       ${pair.map((member, index) => `<button class="choice-card" data-choice="${index}" aria-label="${esc(member.name)}を選ぶ"><span class="choice-photo">${state.photo === "official" ? imageTag(member) : `<span class="simple-avatar">${initials(member.name)}</span>`}</span><span class="choice-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b>${member.en ? `<span>${esc(member.en)}</span>` : ""}</span></button>${index === 0 ? '<span class="vs">VS</span>' : ""}`).join("")}
     </div>
-    <p class="match-hint">← 左が好き　　<b>選ぶだけで次へ</b>　　右が好き →</p>
-    <div class="match-actions"><button class="secondary-btn" data-draw>どっちも好き</button><button class="secondary-btn" data-unknown>わからない</button><button class="secondary-btn" data-undo ${state.history.length === 0 ? "disabled" : ""}>↩ ひとつ戻る</button></div>
+    <p class="match-hint"><b>${phaseHint}</b><br />← 左が好き　　右が好き →</p>
+    <div class="match-actions"><button class="secondary-btn" data-draw>どっちも好き</button><button class="secondary-btn" data-unknown>わからない / スキップ</button><button class="secondary-btn" data-undo ${state.history.length === 0 ? "disabled" : ""}>↩ ひとつ戻る</button></div>
   </section>`;
-  document.querySelectorAll("[data-choice]").forEach(button => button.addEventListener("click", () => choose(Number(button.dataset.choice))));
-  document.querySelector("[data-draw]").addEventListener("click", () => choose(null, true));
-  document.querySelector("[data-unknown]").addEventListener("click", () => choose(null, false));
+  document.querySelectorAll("[data-choice]").forEach(button => button.addEventListener("click", () => choose(Number(button.dataset.choice), "love")));
+  document.querySelector("[data-draw]").addEventListener("click", () => choose(null, "both"));
+  document.querySelector("[data-unknown]").addEventListener("click", () => choose(null, "skip"));
   document.querySelector("[data-undo]").addEventListener("click", undo);
 }
-function choose(index, draw = false) {
-  const pair = state.matches[state.matchIndex];
-  state.history.push({ matchIndex: state.matchIndex, scores: new Map(state.scores) });
-  if (draw) { pair.forEach(member => state.scores.set(member.name, state.scores.get(member.name) + .5)); }
-  else if (index !== null) state.scores.set(pair[index].name, state.scores.get(pair[index].name) + 1);
-  state.matchIndex++;
-  if (state.matchIndex >= state.matches.length) finishGame(); else renderMatch();
+function choose(index, type = "love") {
+  const pair = state.currentPair;
+  if (!pair) return;
+  saveVoteHistory();
+  const [a, b] = pair;
+  if (type === "love") {
+    const winner = index === 0 ? a : b;
+    const loser = index === 0 ? b : a;
+    updateElo(winner, loser);
+  } else if (type === "both") {
+    const nextRating = Math.max(state.elo.get(a.name), state.elo.get(b.name)) + 8;
+    state.elo.set(a.name, nextRating); state.elo.set(b.name, nextRating);
+  } else {
+    const nextRating = Math.min(state.elo.get(a.name), state.elo.get(b.name));
+    const penalty = state.elo.get(a.name) === 1500 && state.elo.get(b.name) === 1500 ? -16 : -8;
+    state.elo.set(a.name, nextRating + penalty); state.elo.set(b.name, nextRating + penalty);
+  }
+  state.seen.add(a.name); state.seen.add(b.name); state.matchIndex++;
+  if (state.matchIndex >= state.maxMatches) finishGame();
+  else { state.currentPair = pickEloPair(); renderMatch(); }
 }
 function undo() {
   const previous = state.history.pop();
   if (!previous) return;
-  state.matchIndex = previous.matchIndex; state.scores = previous.scores; renderMatch();
+  state.matchIndex = previous.matchIndex;
+  state.elo = previous.elo;
+  state.seen = previous.seen;
+  state.battled = previous.battled;
+  state.currentPair = previous.currentPair;
+  renderMatch();
 }
 function finishGame() {
   const members = allSelectedMembers();
-  state.ranking = members.map(member => ({ ...member, score: state.scores.get(member.name) || 0 })).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ja"));
-  state.screen = "result"; state.showAll = false; renderResult();
+  state.ranking = getSorted(members).map(member => ({ ...member, score: state.elo.get(member.name) || 1500 }));
+  state.screen = "result";
+  renderResult();
 }
 function renderResult() {
-  const category = CATEGORIES[state.category];
-  const top = state.ranking.slice(0, 3);
-  const shown = state.showAll ? state.ranking : state.ranking.slice(0, 9);
-  const maxScore = Math.max(1, ...state.ranking.map(member => member.score));
-  const phrase = state.ranking.length && state.ranking[0].score === 0 ? "全員尊すぎて、まだ決められなかった…！" : `${state.ranking[0]?.name || "あなたの推し"}の魅力に、心をつかまれました。`;
+  const category = CATEGORIES.face;
+  const finalNine = state.ranking.slice(0, 9);
+  const gap = getBorderGap();
+  const resultMessage = gap >= 50 ? "対戦で選ばれ続けた9人がそろいました。" : "9人目まで、最後まで厳選しました。";
   app.innerHTML = `<section class="result-screen">
-    <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR RESULT IS READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">対決を勝ち抜いたメンバーたちです。</p></div></div>
-    <div class="top-three">${top.map((member, index) => `<a class="top-result" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く"><span class="top-photo">${imageTag(member)}</span><span class="top-rank">${index + 1}</span><span class="top-result-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
-    <p class="result-insight"><strong>${esc(phrase)}</strong><br />あなたの直感から生まれた、世界にひとつのランキング。</p>
-    <div class="result-list">${shown.map((member, index) => `<div class="rank-row"><span class="rank-number">${String(index + 1).padStart(2, "0")}</span><span class="rank-avatar">${imageTag(member)}</span><span class="rank-name"><b>${esc(member.name)}</b><small>${esc(member.groupName)}${member.en ? ` / ${esc(member.en)}` : ""}</small></span><span class="rank-score">${member.score === 0 ? "—" : `${Math.round(member.score * 10) / 10} pt`}</span><a class="rank-link" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィール">↗</a></div>`).join("")}</div>
-    ${state.ranking.length > 9 ? `<button class="show-more" id="show-more">${state.showAll ? "上位9人だけ表示" : `もっと見る（全${state.ranking.length}人）`}</button>` : ""}
+    <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR 9 ARE READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">${state.maxMatches}回の直感から、選ばれた9人です。</p></div></div>
+    <p class="result-insight"><strong>${resultMessage}</strong><br />順位ではなく、あなたの好き顔として残ったタレントたちです。</p>
+    <div class="final-nine-grid">${finalNine.map(member => `<a class="final-card" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く"><span class="final-card-photo">${imageTag(member)}</span><span class="final-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
+    <p class="result-note">✦ 9人の順番はつけていません。気になるタレントをタップすると公式プロフィールが開きます。</p>
     <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="secondary-btn" id="save-btn">▣ 画像で保存</button><button class="primary-btn" id="retry-btn">もう一度診断する</button></div>
   </section>`;
-  document.querySelector("#show-more")?.addEventListener("click", () => { state.showAll = !state.showAll; renderResult(); });
   document.querySelector("#retry-btn").addEventListener("click", () => { state.screen = "setup"; render(); });
   document.querySelector("#share-btn").addEventListener("click", shareResult);
   document.querySelector("#save-btn").addEventListener("click", saveResultImage);
@@ -930,8 +995,9 @@ function showToast(message) {
   toast.textContent = message; toast.classList.add("is-visible"); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2600);
 }
 async function shareResult() {
-  const category = CATEGORIES[state.category].label;
-  const text = `私の${category}は ${state.ranking.slice(0, 3).map(member => member.name).join("・")}！\nSTARTO 好き顔セレクション`;
+  const category = CATEGORIES.face.label;
+  const names = state.ranking.slice(0, 9).map(member => member.name).join("・");
+  const text = `私の${category}は ${names}！\nSTARTO 好き顔セレクション`;
   try {
     if (navigator.share) await navigator.share({ title: "STARTO 好き顔セレクション", text, url: location.href });
     else { await navigator.clipboard.writeText(`${text}\n${location.href}`); showToast("結果とURLをコピーしました"); }
@@ -943,12 +1009,13 @@ function saveResultImage() {
   ctx.fillStyle = "#7bd9e9"; ctx.beginPath(); ctx.arc(845, 135, 100, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#ff8068"; ctx.beginPath(); ctx.arc(150, 1210, 76, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#ffffff"; ctx.font = "700 25px sans-serif"; ctx.fillText("STARTO 好き顔セレクション", 80, 92);
-  ctx.fillStyle = "#7bd9e9"; ctx.font = "700 18px sans-serif"; ctx.fillText(CATEGORIES[state.category].label.toUpperCase(), 80, 145);
-  ctx.fillStyle = "#ffffff"; ctx.font = "900 58px sans-serif"; ctx.fillText("MY TOP 9", 80, 228);
+  ctx.fillStyle = "#7bd9e9"; ctx.font = "700 18px sans-serif"; ctx.fillText("MY 9 FAVORITES", 80, 145);
+  ctx.fillStyle = "#ffffff"; ctx.font = "900 58px sans-serif"; ctx.fillText("好き顔9選", 80, 228);
   state.ranking.slice(0, 9).forEach((member, index) => {
-    const y = 300 + index * 103; ctx.fillStyle = index === 0 ? "#ff8068" : "#7bd9e9"; ctx.font = "italic 900 30px sans-serif"; ctx.fillText(String(index + 1).padStart(2, "0"), 80, y);
-    ctx.fillStyle = "rgba(255,255,255,.15)"; ctx.fillRect(170, y - 32, 720, 1);
-    ctx.fillStyle = "#ffffff"; ctx.font = "700 27px sans-serif"; ctx.fillText(member.name, 185, y); ctx.fillStyle = "rgba(255,255,255,.63)"; ctx.font = "500 14px sans-serif"; ctx.fillText(`${member.groupName}${member.en ? `  /  ${member.en}` : ""}`, 185, y + 26);
+    const y = 300 + index * 103;
+    ctx.fillStyle = "rgba(255,255,255,.15)"; ctx.fillRect(80, y - 32, 810, 1);
+    ctx.fillStyle = "#ffffff"; ctx.font = "700 27px sans-serif"; ctx.fillText(member.name, 95, y);
+    ctx.fillStyle = "rgba(255,255,255,.63)"; ctx.font = "500 14px sans-serif"; ctx.fillText(member.groupName, 95, y + 26);
   });
   ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "500 14px sans-serif"; ctx.fillText("FAN-MADE PROJECT  •  starto-sukigao", 80, 1320);
   const link = document.createElement("a"); link.download = "starto-sukigao-result.png"; link.href = canvas.toDataURL("image/png"); link.click(); showToast("結果画像を保存しました");

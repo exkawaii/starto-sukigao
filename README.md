@@ -9,7 +9,8 @@
 - STARTO公式「タレント」一覧に掲載されている全105名を最初から対象化
 - 個人活動中のタレントと15グループ（20th Century / A.B.C-Z / Aぇ! group / Hey! Say! JUMP / King & Prince / Kis-My-Ft2 / NEWS / SUPER EIGHT / SixTONES / Snow Man / Travis Japan / WEST. / timelesz / なにわ男子 / ふぉ～ゆ～）を収録
 - カテゴリは「好き顔9選」のみに整理
-- サクッと診断 / ガチ全部比較
+- イージー100回 / ガチモード200回のEloレーティング式対戦
+- 対戦で選ばれたタレントを段階的に厳選し、最終9人だけを順位なしで表示
 - 公式アー写 / シンプル表示
 - 2択・どっちも好き・わからない・ひとつ戻る
 - TOP 3と全体ランキング表示
