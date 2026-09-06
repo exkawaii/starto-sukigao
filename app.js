@@ -763,6 +763,9 @@ const CATEGORIES = {
   face: { label: "好き顔9選", lead: "顔が好き。直感だけで選ぶランキング" }
 };
 const TOTAL_MEMBERS = GROUPS.reduce((total, group) => total + group.members.length, 0);
+const MIN_CUSTOM_MATCHES = 20;
+const MAX_CUSTOM_MATCHES = 500;
+const DEFAULT_CUSTOM_MATCHES = 150;
 
 const state = {
   screen: "setup",
@@ -772,6 +775,7 @@ const state = {
   directGroupId: GROUPS[0].id,
   directSelection: [],
   mode: "easy",
+  customMatches: DEFAULT_CUSTOM_MATCHES,
   photo: "official",
   maxMatches: 100,
   matchIndex: 0,
@@ -794,6 +798,21 @@ function allSelectedMembers() {
   return GROUPS.flatMap(group => group.members.map(member => ({ ...member, groupId: group.id, groupName: group.name })));
 }
 function initials(name) { return name.slice(0, 1); }
+function clampMatchCount(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_CUSTOM_MATCHES;
+  return Math.min(MAX_CUSTOM_MATCHES, Math.max(MIN_CUSTOM_MATCHES, parsed));
+}
+function getSelectedMatchCount() {
+  if (state.mode === "easy") return 100;
+  if (state.mode === "full") return 200;
+  return clampMatchCount(state.customMatches);
+}
+function getMatchModeLabel() {
+  if (state.mode === "easy") return "EASY ELO / 100回";
+  if (state.mode === "full") return "SERIOUS ELO / 200回";
+  return `CUSTOM ELO / ${getSelectedMatchCount()}回`;
+}
 function shuffle(items) {
   const array = [...items];
   for (let i = array.length - 1; i > 0; i--) {
@@ -872,6 +891,7 @@ function render() {
 }
 function renderSetup() {
   const category = CATEGORIES.face;
+  const selectedMatchCount = getSelectedMatchCount();
   const compareSetup = `
       <div class="all-roster">
         <div class="roster-total"><strong>${TOTAL_MEMBERS}</strong><span>ARTISTS</span></div>
@@ -883,16 +903,17 @@ function renderSetup() {
       </div>
       <div class="selection-note"><span class="note-dot"></span><b>全${GROUPS.length}グループ・${TOTAL_MEMBERS}名が対象</b> / このまま診断をスタートできます</div>
       <div class="option-area">
-        <div><div class="section-label"><b>対戦モード</b><span>QUESTION STYLE</span></div><div class="segmented">
-          <button class="segment-btn ${state.mode === "easy" ? "is-selected" : ""}" data-mode="easy"><b>イージー（100回）</b><small>バランスよく厳選・約10分</small></button>
-          <button class="segment-btn ${state.mode === "full" ? "is-selected" : ""}" data-mode="full"><b>ガチモード（200回）</b><small>本気で厳選・約20分</small></button>
-        </div></div>
+        <div><div class="section-label"><b>対戦モード</b><span>ELO QUESTION STYLE</span></div><div class="segmented match-mode-options">
+          <button class="segment-btn ${state.mode === "easy" ? "is-selected" : ""}" data-mode="easy"><b>イージー（100回）</b><small>バランスよく厳選</small></button>
+          <button class="segment-btn ${state.mode === "full" ? "is-selected" : ""}" data-mode="full"><b>ガチモード（200回）</b><small>本気で厳選</small></button>
+          <button class="segment-btn ${state.mode === "custom" ? "is-selected" : ""}" data-mode="custom"><b>カスタム</b><small>${MIN_CUSTOM_MATCHES}〜${MAX_CUSTOM_MATCHES}回</small></button>
+        </div>${state.mode === "custom" ? `<div class="custom-match-control"><label for="custom-match-input">対戦回数</label><div class="custom-match-field"><input id="custom-match-input" type="number" min="${MIN_CUSTOM_MATCHES}" max="${MAX_CUSTOM_MATCHES}" step="1" value="${selectedMatchCount}" inputmode="numeric" /><span>回</span></div><small>Eloで比較する回数を指定</small></div>` : ""}</div>
         <div><div class="section-label"><b>写真タイプ</b><span>PHOTO TYPE</span></div><div class="segmented">
           <button class="segment-btn ${state.photo === "official" ? "is-selected" : ""}" data-photo="official"><b>公式アー写</b><small>プロフィール写真で選ぶ</small></button>
           <button class="segment-btn ${state.photo === "simple" ? "is-selected" : ""}" data-photo="simple"><b>シンプル表示</b><small>名前だけで直感勝負</small></button>
         </div></div>
       </div>
-      <div class="start-row"><p class="start-copy"><b>${category.label} / ${state.mode === "easy" ? "EASY MODE" : "FULL COMPARISON"}</b>${category.lead}</p><button class="primary-btn" id="start-btn">診断をスタート</button></div>`;
+      <div class="start-row"><p class="start-copy"><b>${category.label} / ${getMatchModeLabel()}</b>${category.lead}</p><button class="primary-btn" id="start-btn">診断をスタート</button></div>`;
   app.innerHTML = `
     <section class="setup-screen">
       <div class="panel-head">
@@ -942,6 +963,12 @@ function renderDirectSetup() {
 function bindSetup() {
   document.querySelectorAll("[data-flow]").forEach(button => button.addEventListener("click", () => { state.flow = button.dataset.flow; renderSetup(); }));
   document.querySelectorAll("[data-mode]").forEach(button => button.addEventListener("click", () => { state.mode = button.dataset.mode; renderSetup(); }));
+  const customMatchInput = document.querySelector("#custom-match-input");
+  customMatchInput?.addEventListener("input", event => {
+    const parsed = Number.parseInt(event.target.value, 10);
+    if (Number.isFinite(parsed)) state.customMatches = clampMatchCount(parsed);
+  });
+  customMatchInput?.addEventListener("change", event => { state.customMatches = clampMatchCount(event.target.value); renderSetup(); });
   document.querySelectorAll("[data-photo]").forEach(button => button.addEventListener("click", () => { state.photo = button.dataset.photo; renderSetup(); }));
   document.querySelectorAll("[data-direct-group]").forEach(button => button.addEventListener("click", () => { state.directGroupId = button.dataset.directGroup; renderSetup(); }));
   document.querySelectorAll("[data-direct-member]").forEach(button => button.addEventListener("click", () => toggleDirectMember(button.dataset.directMember)));
@@ -973,7 +1000,9 @@ function startDirectSelection() {
 }
 function startGame() {
   const members = allSelectedMembers();
-  state.maxMatches = state.mode === "easy" ? 100 : 200;
+  const customMatchInput = document.querySelector("#custom-match-input");
+  if (state.mode === "custom" && customMatchInput) state.customMatches = clampMatchCount(customMatchInput.value);
+  state.maxMatches = getSelectedMatchCount();
   state.matchIndex = 0;
   state.elo = new Map(members.map(member => [member.name, 1500]));
   state.seen = new Set();
@@ -994,7 +1023,7 @@ function renderMatch() {
   app.innerHTML = `<section class="match-screen">
     <div class="panel-head"><div><p class="panel-kicker">02 / TRUST YOUR INSTINCT</p><h2 class="panel-title">直感で、どっちが好き？</h2><p class="panel-lead">選ばれたタレントを少しずつ厳選していきます。</p></div><span class="panel-index">02</span></div>
     <div class="match-progress"><div class="match-progress-bar"><i style="width:${(state.matchIndex / total) * 100}%"></i></div><span class="match-progress-count">${String(state.matchIndex + 1).padStart(3, "0")} / ${String(total).padStart(3, "0")}</span></div>
-    <p class="match-label">${phaseLabels[phase]} / ${state.mode === "easy" ? "EASY 100" : "SERIOUS 200"}</p>
+    <p class="match-label">${phaseLabels[phase]} / ${getMatchModeLabel()}</p>
     <div class="match-pair">
       ${pair.map((member, index) => `<button class="choice-card" data-choice="${index}" aria-label="${esc(member.name)}を選ぶ"><span class="choice-photo">${state.photo === "official" ? imageTag(member) : `<span class="simple-avatar">${initials(member.name)}</span>`}</span><span class="choice-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b>${member.en ? `<span>${esc(member.en)}</span>` : ""}</span></button>${index === 0 ? '<span class="vs">VS</span>' : ""}`).join("")}
     </div>

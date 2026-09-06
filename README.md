@@ -10,6 +10,7 @@
 - 個人活動中のタレントと15グループ（20th Century / A.B.C-Z / Aぇ! group / Hey! Say! JUMP / King & Prince / Kis-My-Ft2 / NEWS / SUPER EIGHT / SixTONES / Snow Man / Travis Japan / WEST. / timelesz / なにわ男子 / ふぉ～ゆ～）を収録
 - カテゴリは「好き顔9選」のみに整理
 - イージー100回 / ガチモード200回のEloレーティング式対戦
+- カスタムEloモード（20〜500回の範囲で対戦回数を指定）
 - 対戦で選ばれたタレントを段階的に厳選し、最終9人だけを順位なしで表示
 - 「好き顔9選」モードでグループを切り替えながら好きな9人を直接選択（選択順を保持）
 - 公式アー写 / シンプル表示
