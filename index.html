@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#08182e" />
+  <meta name="description" content="STARTO ENTERTAINMENTのメンバーから、あなたの好き顔を見つけるファン制作の診断アプリ。" />
+  <title>STARTO 好き顔セレクション</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="site-noise" aria-hidden="true"></div>
+  <div class="orb orb-a" aria-hidden="true"></div>
+  <div class="orb orb-b" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="STARTO 好き顔セレクション トップへ">
+      <span class="brand-mark">S<span>E</span></span>
+      <span class="brand-copy"><b>STARTO</b><small>好き顔セレクション</small></span>
+    </a>
+    <div class="topbar-right">
+      <span class="fan-made"><i></i> FAN-MADE PROJECT</span>
+      <a class="official-link" href="https://starto.jp/" target="_blank" rel="noreferrer">OFFICIAL <span>↗</span></a>
+    </div>
+  </header>
+
+  <main id="top" class="app-shell">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow"><span>YOU CHOOSE.</span> WE RANK.</p>
+        <h1>STARTO<br /><em>好き顔</em><strong>セレクション</strong></h1>
+        <p class="hero-description">直感で選ぶだけ。<br />あなたの“いちばん”を見つけよう。</p>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="orbit orbit-1"></div><div class="orbit orbit-2"></div>
+        <span class="star star-1">✦</span><span class="star star-2">✧</span><span class="star star-3">✦</span>
+        <div class="hero-stamp"><span>YOUR</span><b>TOP 9</b><span>IS WAITING</span></div>
+      </div>
+    </section>
+
+    <section class="steps" aria-label="診断の流れ">
+      <div class="step is-active"><span class="step-num">01</span><div><b>選ぶ</b><small>グループを選択</small></div></div>
+      <span class="step-line"></span>
+      <div class="step"><span class="step-num">02</span><div><b>比べる</b><small>直感でタップ</small></div></div>
+      <span class="step-line"></span>
+      <div class="step"><span class="step-num">03</span><div><b>完成</b><small>あなたのTOP 9</small></div></div>
+    </section>
+
+    <div id="app" class="content-card"></div>
+
+    <footer class="footer">
+      <div class="footer-rule"></div>
+      <p>STARTO 好き顔セレクション</p>
+      <small>このサイトはファン制作の非公式コンテンツです。STARTO ENTERTAINMENTおよび各アーティストとは関係ありません。</small>
+    </footer>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
