@@ -1,5 +1,7 @@
 # STARTO 好き顔セレクション
 
+公開URL：**https://exkawaii.github.io/starto-sukigao/**
+
 参考サイトの診断フローをベースにした、STARTO ENTERTAINMENT版のファン制作プロトタイプです。
 
 ## 含まれる機能
