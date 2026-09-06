@@ -872,7 +872,7 @@ function renderSetup() {
   app.innerHTML = `
     <section class="setup-screen">
       <div class="panel-head">
-        <div><p class="panel-kicker">01 / ALL ARTISTS, ONE RANKING</p><h2 class="panel-title">所属アーティスト全員で比べよう</h2><p class="panel-lead">グループを選ぶ必要はありません。収録している全員が最初から対象です。</p></div>
+        <div><p class="panel-kicker">01 / ALL ARTISTS, ONE RANKING</p><h2 class="panel-title">所属アーティスト全員で比べよう</h2><p class="panel-lead">🎀｡･ﾟ♡ﾟ･｡🎀｡･ﾟ♡ﾟ･｡🎀 ｡･ﾟ♡ﾟ･｡🎀</p></div>
         <span class="panel-index">01</span>
       </div>
       <div class="all-roster">
@@ -924,7 +924,7 @@ function renderMatch() {
   const phaseLabels = ["候補を広く比較中", "好みを絞り込み中", "最終9人を厳選中"];
   const phaseHint = phase === 2 ? "最終9人に近いタレントを重点的に比較しています" : "直感で選ぶほど、あなたの好き顔がはっきりします";
   app.innerHTML = `<section class="match-screen">
-    <div class="panel-head"><div><p class="panel-kicker">02 / TRUST YOUR INSTINCT</p><h2 class="panel-title">直感で、どっちが好き？</h2><p class="panel-lead">順位をつけるのではなく、選ばれたタレントを少しずつ厳選していきます。</p></div><span class="panel-index">02</span></div>
+    <div class="panel-head"><div><p class="panel-kicker">02 / TRUST YOUR INSTINCT</p><h2 class="panel-title">直感で、どっちが好き？</h2><p class="panel-lead">選ばれたタレントを少しずつ厳選していきます。</p></div><span class="panel-index">02</span></div>
     <div class="match-progress"><div class="match-progress-bar"><i style="width:${(state.matchIndex / total) * 100}%"></i></div><span class="match-progress-count">${String(state.matchIndex + 1).padStart(3, "0")} / ${String(total).padStart(3, "0")}</span></div>
     <p class="match-label">${phaseLabels[phase]} / ${state.mode === "easy" ? "EASY 100" : "SERIOUS 200"}</p>
     <div class="match-pair">
@@ -982,9 +982,9 @@ function renderResult() {
   const resultMessage = gap >= 50 ? "対戦で選ばれ続けた9人がそろいました。" : "9人目まで、最後まで厳選しました。";
   app.innerHTML = `<section class="result-screen">
     <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR 9 ARE READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">${state.maxMatches}回の直感から、選ばれた9人です。</p></div></div>
-    <p class="result-insight"><strong>${resultMessage}</strong><br />順位ではなく、あなたの好き顔として残ったタレントたちです。</p>
+    <p class="result-insight"><strong>${resultMessage}</strong><br />あなたの好き顔として残ったタレントたちです。</p>
     <div class="final-nine-grid">${finalNine.map(member => `<a class="final-card" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く"><span class="final-card-photo">${imageTag(member)}</span><span class="final-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
-    <p class="result-note">✦ 9人の順番はつけていません。気になるタレントをタップすると公式プロフィールが開きます。</p>
+    <p class="result-note">✦ 気になるタレントをタップすると公式プロフィールが開きます。</p>
     <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="secondary-btn" id="save-btn">▣ 画像で保存</button><button class="primary-btn" id="retry-btn">もう一度診断する</button></div>
   </section>`;
   document.querySelector("#retry-btn").addEventListener("click", () => { state.screen = "setup"; render(); });
