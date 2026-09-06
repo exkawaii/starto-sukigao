@@ -760,7 +760,7 @@ const GROUPS = [
 ];
 
 const CATEGORIES = {
-  face: { label: "好き顔9選", lead: "顔が好き。直感だけで選ぶランキング。" }
+  face: { label: "好き顔9選", lead: "顔が好き。直感だけで選ぶランキング" }
 };
 const TOTAL_MEMBERS = GROUPS.reduce((total, group) => total + group.members.length, 0);
 
