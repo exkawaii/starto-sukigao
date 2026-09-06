@@ -6,7 +6,8 @@
 
 ## 含まれる機能
 
-- King & Prince / Snow Man / SixTONES / なにわ男子 / timelesz / WEST. の全39名を最初から対象化
+- STARTO公式「タレント」一覧に掲載されている全105名を最初から対象化
+- 個人活動中のタレントと15グループ（20th Century / A.B.C-Z / Aぇ! group / Hey! Say! JUMP / King & Prince / Kis-My-Ft2 / NEWS / SUPER EIGHT / SixTONES / Snow Man / Travis Japan / WEST. / timelesz / なにわ男子 / ふぉ～ゆ～）を収録
 - カテゴリは「好き顔9選」のみに整理
 - サクッと診断 / ガチ全部比較
 - 公式アー写 / シンプル表示
