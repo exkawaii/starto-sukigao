@@ -83,15 +83,14 @@ const GROUPS = [
 ];
 
 const CATEGORIES = {
-  face: { label: "好き顔9選", lead: "顔が好き。直感だけで選ぶランキング。" },
-  date: { label: "付き合いたい人9選", lead: "もしも隣にいるなら？恋人目線で選ぶランキング。" },
-  marry: { label: "結婚したい人9選", lead: "ずっと一緒にいたいのは？未来目線で選ぶランキング。" }
+  face: { label: "好き顔9選", lead: "顔が好き。直感だけで選ぶランキング。" }
 };
+const TOTAL_MEMBERS = GROUPS.reduce((total, group) => total + group.members.length, 0);
 
 const state = {
   screen: "setup",
   category: "face",
-  selectedGroups: new Set(["snow-man", "sixtones"]),
+  selectedGroups: new Set(GROUPS.map(group => group.id)),
   mode: "easy",
   photo: "official",
   matches: [],
@@ -153,24 +152,22 @@ function render() {
   if (state.screen !== "setup") window.scrollTo({ top: document.querySelector(".content-card").offsetTop - 20, behavior: "smooth" });
 }
 function renderSetup() {
-  const category = CATEGORIES[state.category];
+  const category = CATEGORIES.face;
   app.innerHTML = `
     <section class="setup-screen">
       <div class="panel-head">
-        <div><p class="panel-kicker">01 / SELECT YOUR WORLD</p><h2 class="panel-title">まずはグループを選ぼう</h2><p class="panel-lead">気になるグループを2つ以上チェック。あとで変更もできます。</p></div>
+        <div><p class="panel-kicker">01 / ALL ARTISTS, ONE RANKING</p><h2 class="panel-title">所属アーティスト全員で比べよう</h2><p class="panel-lead">グループを選ぶ必要はありません。収録している全員が最初から対象です。</p></div>
         <span class="panel-index">01</span>
       </div>
-      <nav class="category-tabs" aria-label="ランキングの種類">
-        ${Object.entries(CATEGORIES).map(([key, item], index) => `<button class="tab-btn ${state.category === key ? "is-active" : ""}" data-category="${key}">${item.label}${index > 0 ? '<span class="new">NEW</span>' : ""}</button>`).join("")}
-      </nav>
-      <div class="section-label"><b>対象グループ</b><span>${state.selectedGroups.size} groups selected</span></div>
-      <div class="group-grid">
-        ${GROUPS.map(group => `<button class="group-option ${state.selectedGroups.has(group.id) ? "is-selected" : ""}" data-group="${group.id}" aria-pressed="${state.selectedGroups.has(group.id)}">
-          <img src="${group.image}" alt="${esc(group.name)}" loading="lazy" onerror="this.style.display='none'" />
-          <span class="group-count">${String(group.count).padStart(2, "0")} MEMBERS</span><span class="group-name">${esc(group.name)}</span><span class="group-check">✓</span>
-        </button>`).join("")}
+      <div class="all-roster">
+        <div class="roster-total"><strong>${TOTAL_MEMBERS}</strong><span>ARTISTS</span></div>
+        <div class="roster-copy"><b>STARTO ENTERTAINMENT</b><span>このサイトに収録している全${GROUPS.length}グループを横断して対決</span></div>
       </div>
-      <div class="selection-note"><span class="note-dot"></span><b>${state.selectedGroups.size}グループ選択中</b> / ${state.selectedGroups.size < 2 ? "あと1グループ選ぶと診断できます" : "このまま診断をスタートできます"}</div>
+      <div class="section-label"><b>対象アーティスト</b><span>ALL ${TOTAL_MEMBERS} MEMBERS</span></div>
+      <div class="roster-grid">
+        ${GROUPS.map(group => `<div class="roster-chip"><span class="roster-dot" style="background:${group.color}"></span><b>${esc(group.name)}</b><small>${group.members.length} MEMBERS</small></div>`).join("")}
+      </div>
+      <div class="selection-note"><span class="note-dot"></span><b>全${GROUPS.length}グループ・${TOTAL_MEMBERS}名が対象</b> / このまま診断をスタートできます</div>
       <div class="option-area">
         <div><div class="section-label"><b>対戦モード</b><span>QUESTION STYLE</span></div><div class="segmented">
           <button class="segment-btn ${state.mode === "easy" ? "is-selected" : ""}" data-mode="easy"><b>サクッと診断</b><small>目安の対戦数で気軽に</small></button>
@@ -181,17 +178,11 @@ function renderSetup() {
           <button class="segment-btn ${state.photo === "simple" ? "is-selected" : ""}" data-photo="simple"><b>シンプル表示</b><small>名前だけで直感勝負</small></button>
         </div></div>
       </div>
-      <div class="start-row"><p class="start-copy"><b>${category.label} / ${state.mode === "easy" ? "EASY MODE" : "FULL COMPARISON"}</b>${category.lead}</p><button class="primary-btn" id="start-btn" ${state.selectedGroups.size < 2 ? "disabled" : ""}>診断をスタート</button></div>
+      <div class="start-row"><p class="start-copy"><b>${category.label} / ${state.mode === "easy" ? "EASY MODE" : "FULL COMPARISON"}</b>${category.lead}</p><button class="primary-btn" id="start-btn">診断をスタート</button></div>
     </section>`;
   bindSetup();
 }
 function bindSetup() {
-  document.querySelectorAll("[data-category]").forEach(button => button.addEventListener("click", () => { state.category = button.dataset.category; renderSetup(); }));
-  document.querySelectorAll("[data-group]").forEach(button => button.addEventListener("click", () => {
-    const id = button.dataset.group;
-    if (state.selectedGroups.has(id)) state.selectedGroups.delete(id); else state.selectedGroups.add(id);
-    renderSetup();
-  }));
   document.querySelectorAll("[data-mode]").forEach(button => button.addEventListener("click", () => { state.mode = button.dataset.mode; renderSetup(); }));
   document.querySelectorAll("[data-photo]").forEach(button => button.addEventListener("click", () => { state.photo = button.dataset.photo; renderSetup(); }));
   document.querySelector("#start-btn")?.addEventListener("click", startGame);
@@ -211,7 +202,7 @@ function renderMatch() {
     <div class="match-progress"><div class="match-progress-bar"><i style="width:${(state.matchIndex / total) * 100}%"></i></div><span class="match-progress-count">${String(state.matchIndex + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span></div>
     <p class="match-label">MATCH UP / ${state.mode === "easy" ? "EASY" : "FULL COMPARISON"}</p>
     <div class="match-pair">
-      ${pair.map((member, index) => `<button class="choice-card" data-choice="${index}" aria-label="${esc(member.name)}を選ぶ">${state.photo === "official" ? imageTag(member) : `<span class="simple-avatar">${initials(member.name)}</span>`}<span class="choice-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>${esc(member.en)}</span></span></button>${index === 0 ? '<span class="vs">VS</span>' : ""}`).join("")}
+      ${pair.map((member, index) => `<button class="choice-card" data-choice="${index}" aria-label="${esc(member.name)}を選ぶ"><span class="choice-photo">${state.photo === "official" ? imageTag(member) : `<span class="simple-avatar">${initials(member.name)}</span>`}</span><span class="choice-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>${esc(member.en)}</span></span></button>${index === 0 ? '<span class="vs">VS</span>' : ""}`).join("")}
     </div>
     <p class="match-hint">← 左が好き　　<b>選ぶだけで次へ</b>　　右が好き →</p>
     <div class="match-actions"><button class="secondary-btn" data-draw>どっちも好き</button><button class="secondary-btn" data-unknown>わからない</button><button class="secondary-btn" data-undo ${state.history.length === 0 ? "disabled" : ""}>↩ ひとつ戻る</button></div>
@@ -247,7 +238,7 @@ function renderResult() {
   const phrase = state.ranking.length && state.ranking[0].score === 0 ? "全員尊すぎて、まだ決められなかった…！" : `${state.ranking[0]?.name || "あなたの推し"}の魅力に、心をつかまれました。`;
   app.innerHTML = `<section class="result-screen">
     <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR RESULT IS READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">対決を勝ち抜いたメンバーたちです。</p></div></div>
-    <div class="top-three">${top.map((member, index) => `<a class="top-result" href="${groupOf(member).profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く">${imageTag(member)}<span class="top-rank">${index + 1}</span><span class="top-result-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
+    <div class="top-three">${top.map((member, index) => `<a class="top-result" href="${groupOf(member).profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く"><span class="top-photo">${imageTag(member)}</span><span class="top-rank">${index + 1}</span><span class="top-result-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
     <p class="result-insight"><strong>${esc(phrase)}</strong><br />あなたの直感から生まれた、世界にひとつのランキング。</p>
     <div class="result-list">${shown.map((member, index) => `<div class="rank-row"><span class="rank-number">${String(index + 1).padStart(2, "0")}</span><span class="rank-avatar">${imageTag(member)}</span><span class="rank-name"><b>${esc(member.name)}</b><small>${esc(member.groupName)} / ${esc(member.en)}</small></span><span class="rank-score">${member.score === 0 ? "—" : `${Math.round(member.score * 10) / 10} pt`}</span><a class="rank-link" href="${groupOf(member).profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィール">↗</a></div>`).join("")}</div>
     ${state.ranking.length > 9 ? `<button class="show-more" id="show-more">${state.showAll ? "上位9人だけ表示" : `もっと見る（全${state.ranking.length}人）`}</button>` : ""}

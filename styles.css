@@ -256,3 +256,48 @@ a { color: inherit; text-decoration: none; }
   .top-result-copy b, .top-result:nth-child(1) .top-result-copy b { font-size: 12px; }
   .top-rank { top: 8px; left: 8px; font-size: 22px; }
 }
+
+/* Full-photo cards: keep the profile image and the name in separate areas. */
+.all-roster { display: flex; align-items: center; gap: 20px; margin: 24px 0 24px; padding: 18px 20px; border: 1px solid rgba(123,217,233,.55); border-radius: 16px; background: linear-gradient(110deg, #eefbfc, #fff8f0); }
+.roster-total { display: flex; flex-direction: column; align-items: center; min-width: 80px; padding-right: 20px; border-right: 1px solid rgba(8,24,46,.12); }
+.roster-total strong { color: var(--ink); font: 900 42px/.9 "DM Sans", sans-serif; letter-spacing: -.08em; }
+.roster-total span { margin-top: 5px; color: var(--coral); font: 700 9px/1 "DM Sans", sans-serif; letter-spacing: .16em; }
+.roster-copy { display: flex; flex-direction: column; gap: 5px; }
+.roster-copy b { color: var(--ink); font: 800 13px/1.2 "DM Sans", sans-serif; letter-spacing: .05em; }
+.roster-copy span { color: var(--muted); font-size: 11px; }
+.roster-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.roster-chip { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.76); }
+.roster-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; }
+.roster-chip b { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.roster-chip small { margin-left: auto; color: var(--muted); font: 700 8px "DM Sans", sans-serif; white-space: nowrap; }
+.choice-card { display: grid; grid-template-rows: minmax(220px, 1fr) auto; min-height: 350px; padding: 0; }
+.choice-card::after { display: none; }
+.choice-photo { position: relative; display: grid; place-items: center; min-height: 220px; overflow: hidden; background: linear-gradient(145deg, #eaf2f6, #d6e2eb); }
+.choice-photo img { position: relative; inset: auto; z-index: 0; display: block; width: 100%; height: 100%; object-fit: contain; object-position: center top; }
+.choice-photo .simple-avatar { position: relative; inset: auto; z-index: 0; width: 100%; height: 100%; }
+.choice-card-copy { position: relative; left: auto; right: auto; bottom: auto; z-index: 1; min-height: 82px; padding: 13px 17px 15px; background: var(--ink); }
+.top-result { display: flex; flex-direction: column; min-height: 0; background: var(--ink); }
+.top-result:nth-child(1) { min-height: 280px; }
+.top-result:nth-child(2) { min-height: 232px; }
+.top-result:nth-child(3) { min-height: 212px; }
+.top-result::after { display: none; }
+.top-photo { position: relative; display: grid; flex: 1; min-height: 160px; place-items: center; overflow: hidden; background: linear-gradient(145deg, #eaf2f6, #d6e2eb); }
+.top-result img { position: relative; inset: auto; z-index: 0; display: block; width: 100%; height: 100%; object-fit: contain; object-position: center top; }
+.top-result-copy { position: relative; left: auto; right: auto; bottom: auto; min-height: 63px; padding: 10px 12px 12px; background: var(--ink); }
+.rank-avatar img { object-fit: contain; background: #eaf2f6; }
+
+@media (max-width: 720px) {
+  .all-roster { align-items: flex-start; gap: 13px; padding: 15px; }
+  .roster-total { min-width: 68px; padding-right: 13px; }
+  .roster-total strong { font-size: 34px; }
+  .roster-copy b { font-size: 11px; }
+  .roster-copy span { font-size: 10px; }
+  .roster-grid { grid-template-columns: repeat(2, 1fr); }
+  .choice-card { min-height: 325px; grid-template-rows: minmax(215px, 1fr) auto; }
+  .choice-photo { min-height: 215px; }
+}
+@media (max-width: 430px) {
+  .choice-card { min-height: 315px; grid-template-rows: minmax(235px, 1fr) auto; }
+  .choice-photo { min-height: 235px; }
+  .vs { top: 50%; margin-top: 0; }
+}

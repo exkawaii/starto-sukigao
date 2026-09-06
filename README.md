@@ -6,8 +6,8 @@
 
 ## 含まれる機能
 
-- King & Prince / Snow Man / SixTONES / なにわ男子 / timelesz / WEST. から2グループ以上を選択
-- 「好き顔」「付き合いたい人」「結婚したい人」の3カテゴリ
+- King & Prince / Snow Man / SixTONES / なにわ男子 / timelesz / WEST. の全39名を最初から対象化
+- カテゴリは「好き顔9選」のみに整理
 - サクッと診断 / ガチ全部比較
 - 公式アー写 / シンプル表示
 - 2択・どっちも好き・わからない・ひとつ戻る
