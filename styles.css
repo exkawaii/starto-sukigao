@@ -163,6 +163,10 @@ a { color: inherit; text-decoration: none; }
 .secondary-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--white); font-size: 11px; font-weight: 700; transition: border-color .2s ease, color .2s ease; }
 .secondary-btn:hover { border-color: var(--ink); color: var(--ink); }
 .secondary-btn:disabled { opacity: .35; cursor: not-allowed; }
+.finish-early-btn { min-width: 190px; padding: 12px 18px; border: 2px solid var(--coral); color: var(--white); background: var(--coral); font-size: 12px; font-weight: 900; box-shadow: 4px 4px 0 var(--yellow); transition: transform .2s ease, box-shadow .2s ease, background .2s ease, opacity .2s ease; }
+.finish-early-btn::before { content: "✦"; color: var(--yellow); font-size: 15px; }
+.finish-early-btn:hover { border-color: var(--coral); color: var(--white); background: #e86d57; transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--yellow); }
+.finish-early-btn:disabled { opacity: .62; border-color: #e7a194; color: rgba(255,255,255,.9); background: #e7a194; box-shadow: 2px 2px 0 #ead27b; }
 
 .result-screen { text-align: center; }
 .result-screen .panel-head { display: block; margin-bottom: 22px; }
@@ -225,6 +229,7 @@ a { color: inherit; text-decoration: none; }
   .match-pair { grid-template-columns: 1fr 32px 1fr; gap: 6px; }
   .vs { width: 32px; height: 32px; font-size: 9px; }
   .choice-card { min-height: 245px; }
+  .match-actions .finish-early-btn { flex-basis: 100%; width: 100%; }
   .choice-card-copy { left: 12px; bottom: 12px; }
   .choice-card-copy b { font-size: 16px; }
   .top-result:nth-child(1) { min-height: 205px; }
