@@ -405,3 +405,8 @@ a { color: inherit; text-decoration: none; }
   .final-card-copy { min-height: 54px; padding: 7px 8px 9px; }
   .final-card-copy small { font-size: 7px; }
 }
+
+/* Keep artist photos and name panels joined at every viewport width. */
+.choice-card { grid-template-rows: auto auto; min-height: 0; }
+.choice-photo { min-height: 0; aspect-ratio: 1 / 1; }
+.direct-member-photo, .final-card-photo { aspect-ratio: 1 / 1; }
