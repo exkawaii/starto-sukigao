@@ -764,6 +764,7 @@ const CATEGORIES = {
 };
 const TOTAL_MEMBERS = GROUPS.reduce((total, group) => total + group.members.length, 0);
 const MIN_AUTO_MATCHES = 105;
+const MANUAL_FINISH_MIN_MATCHES = 60;
 const MAX_AUTO_MATCHES = 800;
 const AUTO_STABLE_ROUNDS = 3;
 const AUTO_BOUND_Z = 1;
@@ -796,6 +797,7 @@ const state = {
   topNineSignature: "",
   stableTopNineRounds: 0,
   autoFinishedByLimit: false,
+  autoFinishedByUser: false,
   currentPair: null,
   history: [],
   ranking: []
@@ -1121,6 +1123,7 @@ function startGame() {
   state.topNineSignature = "";
   state.stableTopNineRounds = 0;
   state.autoFinishedByLimit = false;
+  state.autoFinishedByUser = false;
   state.currentPair = pickEloPair();
   state.history = [];
   state.ranking = [];
@@ -1147,12 +1150,13 @@ function renderMatch() {
       ${pair.map((member, index) => `<button class="choice-card" data-choice="${index}" aria-label="${esc(member.name)}を選ぶ"><span class="choice-photo">${state.photo === "official" ? imageTag(member) : `<span class="simple-avatar">${initials(member.name)}</span>`}</span><span class="choice-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b>${member.en ? `<span>${esc(member.en)}</span>` : ""}</span></button>${index === 0 ? '<span class="vs">VS</span>' : ""}`).join("")}
     </div>
     <p class="match-hint"><b>${phaseHint}</b><br />← 左が好き　　右が好き →</p>
-    <div class="match-actions"><button class="secondary-btn" data-draw>どっちも好き</button><button class="secondary-btn" data-unknown>わからない / スキップ</button><button class="secondary-btn" data-undo ${state.history.length === 0 ? "disabled" : ""}>↩ ひとつ戻る</button></div>
+    <div class="match-actions"><button class="secondary-btn" data-draw>どっちも好き</button><button class="secondary-btn" data-unknown>わからない / スキップ</button><button class="secondary-btn" data-undo ${state.history.length === 0 ? "disabled" : ""}>↩ ひとつ戻る</button>${isUntilNine ? `<button class="secondary-btn finish-early-btn" data-finish-now ${state.matchIndex < MANUAL_FINISH_MIN_MATCHES ? "disabled" : ""} title="${state.matchIndex < MANUAL_FINISH_MIN_MATCHES ? `${MANUAL_FINISH_MIN_MATCHES}問後から終了できます` : "現在の上位9人で結果を見る"}">ここまでで終了</button>` : ""}</div>
   </section>`;
   document.querySelectorAll("[data-choice]").forEach(button => button.addEventListener("click", () => choose(Number(button.dataset.choice), "love")));
   document.querySelector("[data-draw]").addEventListener("click", () => choose(null, "both"));
   document.querySelector("[data-unknown]").addEventListener("click", () => choose(null, "skip"));
   document.querySelector("[data-undo]").addEventListener("click", undo);
+  document.querySelector("[data-finish-now]")?.addEventListener("click", finishNow);
 }
 function choose(index, type = "love") {
   const pair = state.currentPair;
@@ -1171,8 +1175,17 @@ function choose(index, type = "love") {
   updateTopNineStability();
   const reachedStable = shouldFinishUntilNine();
   state.autoFinishedByLimit = state.mode === "until9" && state.matchIndex >= state.maxMatches && !reachedStable;
-  if (state.matchIndex >= state.maxMatches || reachedStable) finishGame();
+  if (state.matchIndex >= state.maxMatches || reachedStable) finishGame(reachedStable ? "stable" : "limit");
   else { state.currentPair = pickEloPair(); renderMatch(); }
+}
+function finishNow() {
+  if (state.mode !== "until9") return;
+  if (state.matchIndex < MANUAL_FINISH_MIN_MATCHES) {
+    showToast(`${MANUAL_FINISH_MIN_MATCHES}問ほど比較してから終了できます`);
+    return;
+  }
+  state.autoFinishedByLimit = false;
+  finishGame("manual");
 }
 function undo() {
   const previous = state.history.pop();
@@ -1191,7 +1204,11 @@ function undo() {
   state.currentPair = previous.currentPair;
   renderMatch();
 }
-function finishGame() {
+function finishGame(reason = "auto") {
+  if (reason === "manual") {
+    state.autoFinishedByUser = true;
+    state.autoFinishedByLimit = false;
+  }
   const members = allSelectedMembers();
   state.ranking = getSorted(members).map(member => ({ ...member, score: state.elo.get(member.name) || 1500 }));
   state.screen = "result";
@@ -1202,11 +1219,12 @@ function renderResult() {
   const isDirect = state.flow === "direct";
   const isUntilNine = state.mode === "until9";
   const hitAutoLimit = isUntilNine && state.autoFinishedByLimit;
+  const finishedByUser = isUntilNine && state.autoFinishedByUser;
   const finalNine = state.ranking.slice(0, 9);
   const gap = getBorderGap();
   const resultMessage = isDirect
     ? "あなたの好き顔9人が決まりました。"
-    : isUntilNine ? (hitAutoLimit ? "安全上限まで比較し、Elo上位9人に絞り込みました。" : "上位9人の境界が安定したところで、すぐに絞り込みました。")
+    : isUntilNine ? (finishedByUser ? "ここまでの比較で、現在のElo上位9人を決定しました。" : hitAutoLimit ? "安全上限まで比較し、Elo上位9人に絞り込みました。" : "上位9人の境界が安定したところで、すぐに絞り込みました。")
     : gap >= 50 ? "対戦で選ばれ続けた9人がそろいました。" : "9人目まで、最後まで厳選しました。";
   const resultLead = isDirect
     ? "選んだ順番に、あなたの好き顔9人をまとめました。"
@@ -1214,11 +1232,11 @@ function renderResult() {
     : `${state.maxMatches}回の直感から、選ばれた9人です。`;
   const resultNote = isDirect
     ? "✦ 9人を選んだ順番で表示しています。気になるタレントをタップすると公式プロフィールが開きます。"
-    : isUntilNine ? (hitAutoLimit ? `✦ ${MAX_AUTO_MATCHES}回を安全上限として設定しています。` : "✦ 上位9人の不確実幅、境界候補の比較回数、トップ9の連続一致を確認して終了しています。")
+    : isUntilNine ? (finishedByUser ? `✦ ${state.matchIndex}問で手動終了しました。現在の上位9人を表示しています。` : hitAutoLimit ? `✦ ${MAX_AUTO_MATCHES}回を安全上限として設定しています。` : "✦ 上位9人の不確実幅、境界候補の比較回数、トップ9の連続一致を確認して終了しています。")
     : "✦ 気になるタレントをタップすると公式プロフィールが開きます。";
   app.innerHTML = `<section class="result-screen">
     <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR 9 ARE READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">${resultLead}</p></div></div>
-    <p class="result-insight"><strong>${resultMessage}</strong><br />${isDirect ? "好きなメンバーを選んだ順に並べています。" : isUntilNine ? (hitAutoLimit ? "安全上限まで比較し、Elo上位9人を表示しています。" : "同じ人や組み合わせが偏らないように比較し、9位と境界候補の不確実幅が分離した時点で終了しました。") : "あなたの好き顔として残ったタレントたちです。"}</p>
+    <p class="result-insight"><strong>${resultMessage}</strong><br />${isDirect ? "好きなメンバーを選んだ順に並べています。" : isUntilNine ? (finishedByUser ? "あなたが終了した時点のランキングを表示しています。" : hitAutoLimit ? "安全上限まで比較し、Elo上位9人を表示しています。" : "同じ人や組み合わせが偏らないように比較し、9位と境界候補の不確実幅が分離した時点で終了しました。") : "あなたの好き顔として残ったタレントたちです。"}</p>
     <div class="final-nine-grid">${finalNine.map((member, index) => `<a class="final-card" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く">${isDirect ? `<span class="final-card-order">${index + 1}</span>` : ""}<span class="final-card-photo">${imageTag(member)}</span><span class="final-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
     <p class="result-note">${resultNote}</p>
     <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="secondary-btn" id="save-btn">▣ 画像で保存</button><button class="primary-btn" id="retry-btn">${isDirect ? "もう一度選ぶ" : "もう一度診断する"}</button></div>
