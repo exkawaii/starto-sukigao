@@ -763,11 +763,16 @@ const CATEGORIES = {
   face: { label: "好き顔9選", lead: "顔が好き。直感だけで選ぶランキング" }
 };
 const TOTAL_MEMBERS = GROUPS.reduce((total, group) => total + group.members.length, 0);
-const MIN_AUTO_MATCHES = 120;
+const MIN_AUTO_MATCHES = 105;
 const MAX_AUTO_MATCHES = 800;
-const AUTO_STABLE_ROUNDS = 18;
-const AUTO_BORDER_GAP = 55;
-const AUTO_TOP_NINE_MIN_APPEARANCES = 4;
+const AUTO_STABLE_ROUNDS = 3;
+const AUTO_BOUND_Z = 1;
+const AUTO_TOP_NINE_MIN_COMPARISONS = 2;
+const AUTO_BOUNDARY_MIN_COMPARISONS = 2;
+const INITIAL_RD = 80;
+const MIN_RD = 32;
+const MAX_RD = 120;
+const ELO_K = 32;
 
 const state = {
   screen: "setup",
@@ -781,6 +786,8 @@ const state = {
   maxMatches: 100,
   matchIndex: 0,
   elo: new Map(),
+  rd: new Map(),
+  games: new Map(),
   seen: new Set(),
   battled: new Map(),
   recentPairs: [],
@@ -826,18 +833,34 @@ function shuffle(items) {
 function imageTag(member, className = "") {
   return `<img class="${className}" src="${member.image}" alt="${esc(member.name)}" loading="lazy" onerror="this.style.display='none'" />`;
 }
+function getRating(name) { return state.elo.get(name) ?? 1500; }
+function getRD(name) { return state.rd.get(name) ?? INITIAL_RD; }
+function getGames(name) { return state.games.get(name) || 0; }
 function expected(a, b) { return 1 / (1 + Math.pow(10, (b - a) / 400)); }
 function getSorted(members = allSelectedMembers()) {
-  return [...members].sort((a, b) => (state.elo.get(b.name) || 0) - (state.elo.get(a.name) || 0));
+  return [...members].sort((a, b) => getRating(b.name) - getRating(a.name));
+}
+function getConfidenceBounds(member) {
+  const rating = getRating(member.name);
+  const uncertainty = AUTO_BOUND_Z * getRD(member.name);
+  return { lower: rating - uncertainty, upper: rating + uncertainty };
 }
 function getPhase() {
-  const phaseLimit = state.mode === "until9" ? 300 : state.maxMatches;
+  const phaseLimit = state.mode === "until9" ? 180 : state.maxMatches;
   const ratio = state.matchIndex / phaseLimit;
   return ratio < .5 ? 0 : ratio < .75 ? 1 : 2;
 }
 function getBorderGap() {
   const sorted = getSorted();
-  return sorted.length >= 10 ? (state.elo.get(sorted[8].name) || 0) - (state.elo.get(sorted[9].name) || 0) : 0;
+  return sorted.length >= 10 ? getRating(sorted[8].name) - getRating(sorted[9].name) : 0;
+}
+function getBoundaryStats(sorted = getSorted()) {
+  if (sorted.length < 10) return { lowerTopNine: 0, upperOutside: 0, confidenceGap: 0 };
+  const topNine = sorted.slice(0, 9);
+  const outside = sorted.slice(9);
+  const lowerTopNine = Math.min(...topNine.map(member => getConfidenceBounds(member).lower));
+  const upperOutside = Math.max(...outside.map(member => getConfidenceBounds(member).upper));
+  return { lowerTopNine, upperOutside, confidenceGap: lowerTopNine - upperOutside };
 }
 function updateTopNineStability() {
   const signature = getSorted().slice(0, 9).map(member => member.name).join("|");
@@ -847,19 +870,52 @@ function updateTopNineStability() {
 function shouldFinishUntilNine() {
   if (state.mode !== "until9" || state.matchIndex < MIN_AUTO_MATCHES) return false;
   const members = allSelectedMembers();
-  const topNine = getSorted(members).slice(0, 9);
+  const sorted = getSorted(members);
+  const topNine = sorted.slice(0, 9);
+  const boundaryMembers = sorted.slice(7, 12);
   const everyMemberSeen = members.every(member => (state.appearances.get(member.name) || 0) >= 1);
-  const topNineCovered = topNine.every(member => (state.appearances.get(member.name) || 0) >= AUTO_TOP_NINE_MIN_APPEARANCES);
-  return everyMemberSeen && topNineCovered && getBorderGap() >= AUTO_BORDER_GAP && state.stableTopNineRounds >= AUTO_STABLE_ROUNDS;
+  const topNineCovered = topNine.every(member => getGames(member.name) >= AUTO_TOP_NINE_MIN_COMPARISONS);
+  const boundaryCovered = boundaryMembers.every(member => getGames(member.name) >= AUTO_BOUNDARY_MIN_COMPARISONS);
+  const { confidenceGap } = getBoundaryStats(sorted);
+  return everyMemberSeen && topNineCovered && boundaryCovered && confidenceGap >= 0 && state.stableTopNineRounds >= AUTO_STABLE_ROUNDS;
 }
 function pairKey(a, b) { return [a.name, b.name].sort().join("|"); }
+function rememberPair(a, b) {
+  const key = pairKey(a, b);
+  state.battled.set(key, (state.battled.get(key) || 0) + 1);
+  state.recentPairs.push(key);
+  if (state.recentPairs.length > 12) state.recentPairs.shift();
+  state.recentMembers.push(a.name, b.name);
+  if (state.recentMembers.length > 12) state.recentMembers.splice(0, state.recentMembers.length - 12);
+  return Math.random() < .5 ? [a, b] : [b, a];
+}
+function pickCoveragePair(members) {
+  if (state.mode !== "until9") return null;
+  const unseen = members.filter(member => (state.appearances.get(member.name) || 0) === 0);
+  if (!unseen.length) return null;
+  const recentMembers = new Set(state.recentMembers);
+  const firstPool = unseen.filter(member => !recentMembers.has(member.name));
+  const a = shuffle(firstPool.length ? firstPool : unseen)[0];
+  const connected = members
+    .filter(member => member.name !== a.name && (state.appearances.get(member.name) || 0) > 0 && !recentMembers.has(member.name))
+    .sort((left, right) => (state.appearances.get(left.name) || 0) - (state.appearances.get(right.name) || 0));
+  if (connected.length) return rememberPair(a, shuffle(connected.slice(0, Math.min(8, connected.length)))[0]);
+  const other = unseen.find(member => member.name !== a.name);
+  return other ? rememberPair(a, other) : null;
+}
 function pickEloPair() {
   const members = allSelectedMembers();
+  const coveragePair = pickCoveragePair(members);
+  if (coveragePair) return coveragePair;
   const sorted = getSorted(members);
   const phase = getPhase();
+  const potential = [...members].sort((a, b) => getConfidenceBounds(b).upper - getConfidenceBounds(a).upper);
+  const poolSize = phase === 1 ? 32 : 28;
   const pool = phase === 0
     ? members
-    : sorted.slice(0, Math.min(phase === 1 ? 28 : 32, sorted.length));
+    : [...new Map([...sorted.slice(0, phase === 1 ? 24 : 18), ...potential.slice(0, phase === 1 ? 12 : 16)].map(member => [member.name, member])).values()]
+      .slice(0, poolSize);
+  const rank = new Map(sorted.map((member, index) => [member.name, index]));
   const recent = new Set(state.recentPairs);
   const recentMembers = new Set(state.recentMembers);
   const candidates = [];
@@ -869,42 +925,68 @@ function pickEloPair() {
       const b = pool[j];
       const key = pairKey(a, b);
       const pairCount = state.battled.get(key) || 0;
+      const aRank = rank.get(a.name);
+      const bRank = rank.get(b.name);
+      const crossesBoundary = (aRank < 9 && bRank >= 9) || (bRank < 9 && aRank >= 9);
+      const nearBoundary = Math.min(Math.abs(aRank - 8), Math.abs(bRank - 8)) <= 4;
+      const aBounds = getConfidenceBounds(a);
+      const bBounds = getConfidenceBounds(b);
+      const intervalOverlap = Math.max(0, Math.min(aBounds.upper, bBounds.upper) - Math.max(aBounds.lower, bBounds.lower));
+      const balance = 1 - Math.abs(expected(getRating(a.name), getRating(b.name)) - .5) * 2;
       const aAppearances = state.appearances.get(a.name) || 0;
       const bAppearances = state.appearances.get(b.name) || 0;
-      const exposurePenalty = (aAppearances + bAppearances) * 30 + Math.max(aAppearances, bAppearances) * 8;
-      const repeatPenalty = pairCount * 220;
-      const recentPenalty = recent.has(key) ? 10000 : 0;
-      const recentMemberPenalty = (recentMembers.has(a.name) ? 4200 : 0) + (recentMembers.has(b.name) ? 4200 : 0);
-      const ratingGap = Math.abs((state.elo.get(a.name) || 1500) - (state.elo.get(b.name) || 1500));
-      const ratingPenalty = ratingGap * (phase === 0 ? .01 : phase === 1 ? .18 : .34);
-      candidates.push({ a, b, key, pairCount, score: -exposurePenalty - repeatPenalty - recentPenalty - recentMemberPenalty - ratingPenalty + Math.random() * 15 });
+      const exposurePenalty = (aAppearances + bAppearances) * 24 + Math.max(aAppearances, bAppearances) * 10;
+      const ratingGap = Math.abs(getRating(a.name) - getRating(b.name));
+      const ratingPenalty = ratingGap * (state.mode === "until9" ? .22 : phase === 0 ? .02 : .12);
+      const boundaryBonus = state.mode === "until9" ? (crossesBoundary ? 1500 : 0) + (nearBoundary ? 500 : 0) : 0;
+      const uncertaintyBonus = state.mode === "until9" ? intervalOverlap * .55 + balance * 180 : balance * 80;
+      const gameNeedBonus = state.mode === "until9" ? (getGames(a.name) < 2 ? 180 : 0) + (getGames(b.name) < 2 ? 180 : 0) : 0;
+      const recentPenalty = recent.has(key) ? 9000 : 0;
+      const recentMemberPenalty = (recentMembers.has(a.name) ? 1800 : 0) + (recentMembers.has(b.name) ? 1800 : 0);
+      candidates.push({ a, b, key, pairCount, score: boundaryBonus + uncertaintyBonus + gameNeedBonus - exposurePenalty - ratingPenalty - pairCount * 520 - recentPenalty - recentMemberPenalty + Math.random() * 20 });
     }
   }
-  candidates.sort((a, b) => b.score - a.score);
-  const fresh = candidates.filter(candidate => candidate.pairCount === 0 && !recent.has(candidate.key));
-  const available = fresh.length ? fresh : candidates.filter(candidate => !recent.has(candidate.key));
-  const fallback = available.length ? available : candidates;
-  const shortlist = fallback.slice(0, Math.min(10, fallback.length));
+  const notRecent = candidates.filter(candidate => !recent.has(candidate.key));
+  const cooldown = notRecent.filter(candidate => !recentMembers.has(candidate.a.name) && !recentMembers.has(candidate.b.name));
+  const available = cooldown.length ? cooldown : notRecent.length ? notRecent : candidates;
+  const lowestRepeat = Math.min(...available.map(candidate => candidate.pairCount));
+  const repeatFiltered = available.filter(candidate => candidate.pairCount === lowestRepeat).sort((a, b) => b.score - a.score);
+  const shortlist = repeatFiltered.slice(0, Math.min(12, repeatFiltered.length));
   const picked = shortlist[Math.floor(Math.random() * shortlist.length)] || candidates[0];
-  const key = picked.key;
-  state.battled.set(key, (state.battled.get(key) || 0) + 1);
-  state.recentPairs.push(key);
-  if (state.recentPairs.length > 12) state.recentPairs.shift();
-  state.recentMembers.push(picked.a.name, picked.b.name);
-  if (state.recentMembers.length > 12) state.recentMembers.splice(0, state.recentMembers.length - 12);
-  return [picked.a, picked.b];
+  return rememberPair(picked.a, picked.b);
 }
-function updateElo(winner, loser) {
-  const winnerRating = state.elo.get(winner.name);
-  const loserRating = state.elo.get(loser.name);
-  const winnerExpected = expected(winnerRating, loserRating);
-  state.elo.set(winner.name, Math.round(winnerRating + 64 * (1 - winnerExpected)));
-  state.elo.set(loser.name, Math.round(loserRating + 32 * (0 - expected(loserRating, state.elo.get(winner.name)))));
+function updateRatingDeviation(a, b, aRating, bRating, aRD, bRD) {
+  const q = Math.log(10) / 400;
+  const nextRD = (rating, opponentRating, rd, opponentRD) => {
+    const g = 1 / Math.sqrt(1 + (3 * q * q * opponentRD * opponentRD) / (Math.PI * Math.PI));
+    const estimate = 1 / (1 + Math.pow(10, (-g * (rating - opponentRating)) / 400));
+    const variance = 1 / (q * q * g * g * Math.max(.05, estimate * (1 - estimate)));
+    const posterior = Math.sqrt(1 / (1 / (rd * rd) + 1 / variance));
+    return Math.max(MIN_RD, Math.min(MAX_RD, posterior));
+  };
+  state.rd.set(a.name, nextRD(aRating, bRating, aRD, bRD));
+  state.rd.set(b.name, nextRD(bRating, aRating, bRD, aRD));
+}
+function updateElo(a, b, aScore = 1) {
+  const aRating = getRating(a.name);
+  const bRating = getRating(b.name);
+  const aRD = getRD(a.name);
+  const bRD = getRD(b.name);
+  const expectedA = expected(aRating, bRating);
+  const expectedB = 1 - expectedA;
+  const bScore = 1 - aScore;
+  state.elo.set(a.name, aRating + ELO_K * (aScore - expectedA));
+  state.elo.set(b.name, bRating + ELO_K * (bScore - expectedB));
+  updateRatingDeviation(a, b, aRating, bRating, aRD, bRD);
+  state.games.set(a.name, getGames(a.name) + 1);
+  state.games.set(b.name, getGames(b.name) + 1);
 }
 function saveVoteHistory() {
   state.history.push({
     matchIndex: state.matchIndex,
     elo: new Map(state.elo),
+    rd: new Map(state.rd),
+    games: new Map(state.games),
     seen: new Set(state.seen),
     battled: new Map(state.battled),
     recentPairs: [...state.recentPairs],
@@ -1029,6 +1111,8 @@ function startGame() {
   state.maxMatches = getConfiguredMatchLimit();
   state.matchIndex = 0;
   state.elo = new Map(members.map(member => [member.name, 1500]));
+  state.rd = new Map(members.map(member => [member.name, INITIAL_RD]));
+  state.games = new Map(members.map(member => [member.name, 0]));
   state.seen = new Set();
   state.battled = new Map();
   state.recentPairs = [];
@@ -1048,13 +1132,13 @@ function renderMatch() {
   state.currentPair = pair;
   const total = state.maxMatches;
   const isUntilNine = state.mode === "until9";
-  const progressRatio = isUntilNine ? Math.min(1, state.matchIndex / 300) : state.matchIndex / total;
+  const progressRatio = isUntilNine ? Math.min(1, state.matchIndex / MIN_AUTO_MATCHES) : state.matchIndex / total;
   const progressText = isUntilNine
     ? `${String(state.matchIndex + 1).padStart(3, "0")}問`
     : `${String(state.matchIndex + 1).padStart(3, "0")} / ${String(total).padStart(3, "0")}`;
   const phase = getPhase();
   const phaseLabels = ["候補を広く比較中", "好みを絞り込み中", "最終9人を厳選中"];
-  const phaseHint = phase === 2 ? "最終9人に近いタレントを重点的に比較しています" : "直感で選ぶほど、あなたの好き顔がはっきりします";
+  const phaseHint = phase === 2 ? "9位・10位の境界と不確実な候補を重点的に比較しています" : phase === 1 ? "比較回数の少ない候補と上位境界を優先しています" : "全員をつなぎながら、直感で好き顔を見つけています";
   app.innerHTML = `<section class="match-screen">
     <div class="panel-head"><div><p class="panel-kicker">02 / TRUST YOUR INSTINCT</p><h2 class="panel-title">直感で、どっちが好き？</h2><p class="panel-lead">選ばれたタレントを少しずつ厳選していきます。</p></div><span class="panel-index">02</span></div>
     <div class="match-progress"><div class="match-progress-bar"><i style="width:${progressRatio * 100}%"></i></div><span class="match-progress-count">${progressText}</span></div>
@@ -1076,16 +1160,9 @@ function choose(index, type = "love") {
   saveVoteHistory();
   const [a, b] = pair;
   if (type === "love") {
-    const winner = index === 0 ? a : b;
-    const loser = index === 0 ? b : a;
-    updateElo(winner, loser);
+    updateElo(a, b, index === 0 ? 1 : 0);
   } else if (type === "both") {
-    const nextRating = Math.max(state.elo.get(a.name), state.elo.get(b.name)) + 8;
-    state.elo.set(a.name, nextRating); state.elo.set(b.name, nextRating);
-  } else {
-    const nextRating = Math.min(state.elo.get(a.name), state.elo.get(b.name));
-    const penalty = state.elo.get(a.name) === 1500 && state.elo.get(b.name) === 1500 ? -16 : -8;
-    state.elo.set(a.name, nextRating + penalty); state.elo.set(b.name, nextRating + penalty);
+    updateElo(a, b, .5);
   }
   state.seen.add(a.name); state.seen.add(b.name);
   state.appearances.set(a.name, (state.appearances.get(a.name) || 0) + 1);
@@ -1102,6 +1179,8 @@ function undo() {
   if (!previous) return;
   state.matchIndex = previous.matchIndex;
   state.elo = previous.elo;
+  state.rd = previous.rd;
+  state.games = previous.games;
   state.seen = previous.seen;
   state.battled = previous.battled;
   state.recentPairs = previous.recentPairs;
@@ -1127,7 +1206,7 @@ function renderResult() {
   const gap = getBorderGap();
   const resultMessage = isDirect
     ? "あなたの好き顔9人が決まりました。"
-    : isUntilNine ? (hitAutoLimit ? "安全上限まで比較し、Elo上位9人に絞り込みました。" : "Eloスコアが安定した9人に絞り込みました。")
+    : isUntilNine ? (hitAutoLimit ? "安全上限まで比較し、Elo上位9人に絞り込みました。" : "上位9人の境界が安定したところで、すぐに絞り込みました。")
     : gap >= 50 ? "対戦で選ばれ続けた9人がそろいました。" : "9人目まで、最後まで厳選しました。";
   const resultLead = isDirect
     ? "選んだ順番に、あなたの好き顔9人をまとめました。"
@@ -1135,11 +1214,11 @@ function renderResult() {
     : `${state.maxMatches}回の直感から、選ばれた9人です。`;
   const resultNote = isDirect
     ? "✦ 9人を選んだ順番で表示しています。気になるタレントをタップすると公式プロフィールが開きます。"
-    : isUntilNine ? (hitAutoLimit ? `✦ ${MAX_AUTO_MATCHES}回を安全上限として設定しています。` : "✦ 上位9人の入れ替わりと10位との差が安定した時点で終了しています。")
+    : isUntilNine ? (hitAutoLimit ? `✦ ${MAX_AUTO_MATCHES}回を安全上限として設定しています。` : "✦ 上位9人の不確実幅、境界候補の比較回数、トップ9の連続一致を確認して終了しています。")
     : "✦ 気になるタレントをタップすると公式プロフィールが開きます。";
   app.innerHTML = `<section class="result-screen">
     <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR 9 ARE READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">${resultLead}</p></div></div>
-    <p class="result-insight"><strong>${resultMessage}</strong><br />${isDirect ? "好きなメンバーを選んだ順に並べています。" : isUntilNine ? (hitAutoLimit ? "安全上限まで比較し、Elo上位9人を表示しています。" : "同じ人や組み合わせが偏らないように比較し、上位9人の安定を確認しました。") : "あなたの好き顔として残ったタレントたちです。"}</p>
+    <p class="result-insight"><strong>${resultMessage}</strong><br />${isDirect ? "好きなメンバーを選んだ順に並べています。" : isUntilNine ? (hitAutoLimit ? "安全上限まで比較し、Elo上位9人を表示しています。" : "同じ人や組み合わせが偏らないように比較し、9位と境界候補の不確実幅が分離した時点で終了しました。") : "あなたの好き顔として残ったタレントたちです。"}</p>
     <div class="final-nine-grid">${finalNine.map((member, index) => `<a class="final-card" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く">${isDirect ? `<span class="final-card-order">${index + 1}</span>` : ""}<span class="final-card-photo">${imageTag(member)}</span><span class="final-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
     <p class="result-note">${resultNote}</p>
     <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="secondary-btn" id="save-btn">▣ 画像で保存</button><button class="primary-btn" id="retry-btn">${isDirect ? "もう一度選ぶ" : "もう一度診断する"}</button></div>
