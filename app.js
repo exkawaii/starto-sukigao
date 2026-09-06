@@ -767,7 +767,10 @@ const TOTAL_MEMBERS = GROUPS.reduce((total, group) => total + group.members.leng
 const state = {
   screen: "setup",
   category: "face",
+  flow: "compare",
   selectedGroups: new Set(GROUPS.map(group => group.id)),
+  directGroupId: GROUPS[0].id,
+  directSelection: [],
   mode: "easy",
   photo: "official",
   maxMatches: 100,
@@ -869,12 +872,7 @@ function render() {
 }
 function renderSetup() {
   const category = CATEGORIES.face;
-  app.innerHTML = `
-    <section class="setup-screen">
-      <div class="panel-head">
-        <div><p class="panel-kicker">01 / ALL ARTISTS, ONE RANKING</p><h2 class="panel-title">所属アーティスト全員で比べよう</h2><p class="panel-lead">🎀｡･ﾟ♡ﾟ･｡🎀｡･ﾟ♡ﾟ･｡🎀 ｡･ﾟ♡ﾟ･｡🎀</p></div>
-        <span class="panel-index">01</span>
-      </div>
+  const compareSetup = `
       <div class="all-roster">
         <div class="roster-total"><strong>${TOTAL_MEMBERS}</strong><span>ARTISTS</span></div>
         <div class="roster-copy"><b>STARTO ENTERTAINMENT</b><span>このサイトに収録している全${GROUPS.length}グループを横断して対決</span></div>
@@ -894,14 +892,84 @@ function renderSetup() {
           <button class="segment-btn ${state.photo === "simple" ? "is-selected" : ""}" data-photo="simple"><b>シンプル表示</b><small>名前だけで直感勝負</small></button>
         </div></div>
       </div>
-      <div class="start-row"><p class="start-copy"><b>${category.label} / ${state.mode === "easy" ? "EASY MODE" : "FULL COMPARISON"}</b>${category.lead}</p><button class="primary-btn" id="start-btn">診断をスタート</button></div>
+      <div class="start-row"><p class="start-copy"><b>${category.label} / ${state.mode === "easy" ? "EASY MODE" : "FULL COMPARISON"}</b>${category.lead}</p><button class="primary-btn" id="start-btn">診断をスタート</button></div>`;
+  app.innerHTML = `
+    <section class="setup-screen">
+      <div class="panel-head">
+        <div><p class="panel-kicker">01 / TRUST YOUR TASTE</p><h2 class="panel-title">あなたの好き顔を見つけよう</h2><p class="panel-lead">比べて厳選するか、好きな9人を直接選べます。</p></div>
+        <span class="panel-index">01</span>
+      </div>
+      <div class="flow-switch" role="tablist" aria-label="好き顔の選び方">
+        <button class="flow-switch-btn ${state.flow === "compare" ? "is-active" : ""}" data-flow="compare" role="tab" aria-selected="${state.flow === "compare"}"><b>対戦で厳選</b><small>直感でどっちが好き？</small></button>
+        <button class="flow-switch-btn ${state.flow === "direct" ? "is-active" : ""}" data-flow="direct" role="tab" aria-selected="${state.flow === "direct"}"><b>好き顔9選</b><small>9人を選んで完成</small></button>
+      </div>
+      ${state.flow === "direct" ? renderDirectSetup() : compareSetup}
     </section>`;
   bindSetup();
 }
+function renderDirectSetup() {
+  const currentGroup = GROUPS.find(group => group.id === state.directGroupId) || GROUPS[0];
+  const selectedNames = new Set(state.directSelection.map(member => member.name));
+  const slots = Array.from({ length: 9 }, (_, index) => {
+    const member = state.directSelection[index];
+    return member
+      ? `<span class="pick-slot is-filled" title="${esc(member.name)}"><strong>${index + 1}</strong><small>${esc(member.name)}</small></span>`
+      : `<span class="pick-slot"><strong>${index + 1}</strong><small>未選択</small></span>`;
+  }).join("");
+  const selectionMessage = state.directSelection.length === 9
+    ? "9人選択できました。選んだ順番で結果に表示されます。"
+    : `あと${9 - state.directSelection.length}人選んでください。`;
+  return `
+      <div class="direct-intro"><span class="result-badge">PICK YOUR 9</span><h3>好きなメンバーを9人選んでね</h3><p>グループを切り替えながら、あなたの“好き顔”を直感でタップ。選んだ順番がそのまま結果になります。</p></div>
+      <div class="direct-picks-summary">
+        <div class="direct-count"><strong>${state.directSelection.length}</strong><span>/ 9 SELECTED</span></div>
+        <div class="direct-slots" role="group" aria-label="選択したメンバーの順番">${slots}</div>
+      </div>
+      <div class="section-label"><b>グループから選ぶ</b><span>${esc(currentGroup.name)} / ${currentGroup.members.length} MEMBERS</span></div>
+      <div class="direct-group-tabs" role="tablist" aria-label="グループを選択">
+        ${GROUPS.map(group => `<button class="direct-group-tab ${group.id === currentGroup.id ? "is-active" : ""}" data-direct-group="${group.id}" role="tab" aria-selected="${group.id === currentGroup.id}" style="--group-color:${group.color}">${esc(group.name)}<small>${group.members.length}</small></button>`).join("")}
+      </div>
+      <div class="direct-member-grid" aria-live="polite">
+        ${currentGroup.members.map(member => {
+          const order = state.directSelection.findIndex(selected => selected.name === member.name);
+          const isSelected = selectedNames.has(member.name);
+          return `<button class="direct-member-card ${isSelected ? "is-selected" : ""}" data-direct-member="${esc(member.name)}" aria-pressed="${isSelected}" aria-label="${esc(member.name)}を${isSelected ? "選択解除" : "選択"}"><span class="direct-member-photo">${imageTag(member)}</span><span class="direct-member-info"><small>${esc(currentGroup.name)}</small><b>${esc(member.name)}</b></span><span class="direct-member-order">${isSelected ? order + 1 : "+"}</span></button>`;
+        }).join("")}
+      </div>
+      <div class="selection-note"><span class="note-dot"></span><b>${selectionMessage}</b></div>
+      <div class="start-row direct-start-row"><p class="start-copy"><b>好き顔9選 / DIRECT SELECT</b>写真を見ながら好きな順に選択できます。</p><div class="direct-start-actions"><button class="secondary-btn" data-clear-direct>選択をリセット</button><button class="primary-btn" id="start-direct-btn" ${state.directSelection.length === 9 ? "" : "disabled"}>結果を見る</button></div></div>`;
+}
 function bindSetup() {
+  document.querySelectorAll("[data-flow]").forEach(button => button.addEventListener("click", () => { state.flow = button.dataset.flow; renderSetup(); }));
   document.querySelectorAll("[data-mode]").forEach(button => button.addEventListener("click", () => { state.mode = button.dataset.mode; renderSetup(); }));
   document.querySelectorAll("[data-photo]").forEach(button => button.addEventListener("click", () => { state.photo = button.dataset.photo; renderSetup(); }));
+  document.querySelectorAll("[data-direct-group]").forEach(button => button.addEventListener("click", () => { state.directGroupId = button.dataset.directGroup; renderSetup(); }));
+  document.querySelectorAll("[data-direct-member]").forEach(button => button.addEventListener("click", () => toggleDirectMember(button.dataset.directMember)));
+  document.querySelector("[data-clear-direct]")?.addEventListener("click", () => { state.directSelection = []; renderSetup(); });
   document.querySelector("#start-btn")?.addEventListener("click", startGame);
+  document.querySelector("#start-direct-btn")?.addEventListener("click", startDirectSelection);
+}
+function toggleDirectMember(name) {
+  const selectedIndex = state.directSelection.findIndex(member => member.name === name);
+  if (selectedIndex >= 0) {
+    state.directSelection.splice(selectedIndex, 1);
+  } else if (state.directSelection.length >= 9) {
+    showToast("好き顔は9人まで選べます");
+    return;
+  } else {
+    const member = allSelectedMembers().find(candidate => candidate.name === name);
+    if (member) state.directSelection.push(member);
+  }
+  renderSetup();
+}
+function startDirectSelection() {
+  if (state.directSelection.length !== 9) {
+    showToast("好き顔を9人選んでください");
+    return;
+  }
+  state.ranking = state.directSelection.map((member, index) => ({ ...member, score: 0, directRank: index + 1 }));
+  state.screen = "result";
+  render();
 }
 function startGame() {
   const members = allSelectedMembers();
@@ -977,17 +1045,26 @@ function finishGame() {
 }
 function renderResult() {
   const category = CATEGORIES.face;
+  const isDirect = state.flow === "direct";
   const finalNine = state.ranking.slice(0, 9);
   const gap = getBorderGap();
-  const resultMessage = gap >= 50 ? "対戦で選ばれ続けた9人がそろいました。" : "9人目まで、最後まで厳選しました。";
+  const resultMessage = isDirect
+    ? "あなたの好き顔9人が決まりました。"
+    : gap >= 50 ? "対戦で選ばれ続けた9人がそろいました。" : "9人目まで、最後まで厳選しました。";
+  const resultLead = isDirect
+    ? "選んだ順番に、あなたの好き顔9人をまとめました。"
+    : `${state.maxMatches}回の直感から、選ばれた9人です。`;
+  const resultNote = isDirect
+    ? "✦ 9人を選んだ順番で表示しています。気になるタレントをタップすると公式プロフィールが開きます。"
+    : "✦ 気になるタレントをタップすると公式プロフィールが開きます。";
   app.innerHTML = `<section class="result-screen">
-    <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR 9 ARE READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">${state.maxMatches}回の直感から、選ばれた9人です。</p></div></div>
-    <p class="result-insight"><strong>${resultMessage}</strong><br />あなたの好き顔として残ったタレントたちです。</p>
-    <div class="final-nine-grid">${finalNine.map(member => `<a class="final-card" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く"><span class="final-card-photo">${imageTag(member)}</span><span class="final-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
-    <p class="result-note">✦ 気になるタレントをタップすると公式プロフィールが開きます。</p>
-    <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="secondary-btn" id="save-btn">▣ 画像で保存</button><button class="primary-btn" id="retry-btn">もう一度診断する</button></div>
+    <div class="panel-head"><span class="panel-index">03</span><div><span class="result-badge">YOUR 9 ARE READY</span><h2 class="panel-title">あなたの${category.label}</h2><p class="panel-lead">${resultLead}</p></div></div>
+    <p class="result-insight"><strong>${resultMessage}</strong><br />${isDirect ? "好きなメンバーを選んだ順に並べています。" : "あなたの好き顔として残ったタレントたちです。"}</p>
+    <div class="final-nine-grid">${finalNine.map((member, index) => `<a class="final-card" href="${member.profile}" target="_blank" rel="noreferrer" aria-label="${esc(member.name)}の公式プロフィールを開く">${isDirect ? `<span class="final-card-order">${index + 1}</span>` : ""}<span class="final-card-photo">${imageTag(member)}</span><span class="final-card-copy"><small>${esc(member.groupName)}</small><b>${esc(member.name)}</b><span>OFFICIAL PROFILE ↗</span></span></a>`).join("")}</div>
+    <p class="result-note">${resultNote}</p>
+    <div class="result-actions"><button class="secondary-btn" id="share-btn">↗ 結果をシェア</button><button class="secondary-btn" id="save-btn">▣ 画像で保存</button><button class="primary-btn" id="retry-btn">${isDirect ? "もう一度選ぶ" : "もう一度診断する"}</button></div>
   </section>`;
-  document.querySelector("#retry-btn").addEventListener("click", () => { state.screen = "setup"; render(); });
+  document.querySelector("#retry-btn").addEventListener("click", () => { state.screen = "setup"; if (isDirect) state.directSelection = []; render(); });
   document.querySelector("#share-btn").addEventListener("click", shareResult);
   document.querySelector("#save-btn").addEventListener("click", saveResultImage);
 }
